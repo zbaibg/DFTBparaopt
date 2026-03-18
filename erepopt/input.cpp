@@ -1,6 +1,7 @@
 #include<iostream>
 #include<string>
 #include<iomanip>
+#include<cmath>
 #include"erepobj.hpp"
 #include"ddh.hpp"
 
@@ -240,12 +241,7 @@ void Erepobj::readinp(const string inputfile){
         }
         for(i=0;i<velem.size();i++){ 
           for(j=0; j<velem[i].lmax+2; j++){
-            if(velem[i].radius[j].precision==0) velem[i].radius[j].delta=1.0;
-            else if(velem[i].radius[j].precision==1) velem[i].radius[j].delta=0.1;
-            else if(velem[i].radius[j].precision==2) velem[i].radius[j].delta=0.01;
-            else if(velem[i].radius[j].precision==3) velem[i].radius[j].delta=0.001;
-            else if(velem[i].radius[j].precision==4) velem[i].radius[j].delta=0.0001;
-            else if(velem[i].radius[j].precision==5) velem[i].radius[j].delta=0.00001;
+            velem[i].radius[j].delta = pow(10.0, -velem[i].radius[j].precision);
           }
         }
       }else if(stemp.find("$d3:")!=string::npos){
@@ -267,12 +263,7 @@ void Erepobj::readinp(const string inputfile){
         }
         if(ntmp>0) ddh.td3=true;
         for(i=0;i<ddh.d3.size();i++){ 
-          if     (ddh.d3[i].precision==0) ddh.d3[i].delta=1.0;
-          else if(ddh.d3[i].precision==1) ddh.d3[i].delta=0.1;
-          else if(ddh.d3[i].precision==2) ddh.d3[i].delta=0.01;
-          else if(ddh.d3[i].precision==3) ddh.d3[i].delta=0.001;
-          else if(ddh.d3[i].precision==4) ddh.d3[i].delta=0.0001;
-          else if(ddh.d3[i].precision==5) ddh.d3[i].delta=0.00001;
+          ddh.d3[i].delta = pow(10.0, -ddh.d3[i].precision);
         }
       }else if(stemp.find("$damph:")!=string::npos){
         ntmp=0;
@@ -290,12 +281,7 @@ void Erepobj::readinp(const string inputfile){
           ntmp++;
         }
         if(ntmp>0) ddh.tdamph=true;
-        if     (ddh.damph.precision==0) ddh.damph.delta=1.0;
-        else if(ddh.damph.precision==1) ddh.damph.delta=0.1;
-        else if(ddh.damph.precision==2) ddh.damph.delta=0.01;
-        else if(ddh.damph.precision==3) ddh.damph.delta=0.001;
-        else if(ddh.damph.precision==4) ddh.damph.delta=0.0001;
-        else if(ddh.damph.precision==5) ddh.damph.delta=0.00001;
+        ddh.damph.delta = pow(10.0, -ddh.damph.precision);
       }else if(stemp.find("$hubbardderivs:")!=string::npos){
         ddh.thirdorderfull=false;
         ntmp=0;
@@ -316,12 +302,7 @@ void Erepobj::readinp(const string inputfile){
         }
         if(ntmp>0) ddh.thubbardderivs=true;
         for(i=0;i<ddh.hubbardderivs.size();i++){ 
-          if     (ddh.hubbardderivs[i].precision==0) ddh.hubbardderivs[i].delta=1.0;
-          else if(ddh.hubbardderivs[i].precision==1) ddh.hubbardderivs[i].delta=0.1;
-          else if(ddh.hubbardderivs[i].precision==2) ddh.hubbardderivs[i].delta=0.01;
-          else if(ddh.hubbardderivs[i].precision==3) ddh.hubbardderivs[i].delta=0.001;
-          else if(ddh.hubbardderivs[i].precision==4) ddh.hubbardderivs[i].delta=0.0001;
-          else if(ddh.hubbardderivs[i].precision==5) ddh.hubbardderivs[i].delta=0.00001;
+          ddh.hubbardderivs[i].delta = pow(10.0, -ddh.hubbardderivs[i].precision);
         }
       }else if(stemp.find("$hubbardderivsfull:")!=string::npos){
         ddh.thirdorderfull=true;
@@ -343,12 +324,7 @@ void Erepobj::readinp(const string inputfile){
         }
         if(ntmp>0) ddh.thubbardderivs=true;
         for(i=0;i<ddh.hubbardderivs.size();i++){ 
-          if     (ddh.hubbardderivs[i].precision==0) ddh.hubbardderivs[i].delta=1.0;
-          else if(ddh.hubbardderivs[i].precision==1) ddh.hubbardderivs[i].delta=0.1;
-          else if(ddh.hubbardderivs[i].precision==2) ddh.hubbardderivs[i].delta=0.01;
-          else if(ddh.hubbardderivs[i].precision==3) ddh.hubbardderivs[i].delta=0.001;
-          else if(ddh.hubbardderivs[i].precision==4) ddh.hubbardderivs[i].delta=0.0001;
-          else if(ddh.hubbardderivs[i].precision==5) ddh.hubbardderivs[i].delta=0.00001;
+          ddh.hubbardderivs[i].delta = pow(10.0, -ddh.hubbardderivs[i].precision);
         }
       }else if(stemp.find("$damphver2:")!=string::npos){
         ntmp=0;
@@ -369,12 +345,7 @@ void Erepobj::readinp(const string inputfile){
         }
         if(ntmp>0) ddh.tdamphver2=true;
         for(i=0;i<ddh.damphver2.size();i++){ 
-          if     (ddh.damphver2[i].precision==0) ddh.damphver2[i].delta=1.0;
-          else if(ddh.damphver2[i].precision==1) ddh.damphver2[i].delta=0.1;
-          else if(ddh.damphver2[i].precision==2) ddh.damphver2[i].delta=0.01;
-          else if(ddh.damphver2[i].precision==3) ddh.damphver2[i].delta=0.001;
-          else if(ddh.damphver2[i].precision==4) ddh.damphver2[i].delta=0.0001;
-          else if(ddh.damphver2[i].precision==5) ddh.damphver2[i].delta=0.00001;
+          ddh.damphver2[i].delta = pow(10.0, -ddh.damphver2[i].precision);
         }
       }else if(stemp.find("$hubbards:")!=string::npos){
         ntmp=0;
@@ -396,12 +367,7 @@ void Erepobj::readinp(const string inputfile){
         }
         if(ntmp>0) ddh.thubbards=true;
         for(i=0;i<ddh.hubbards.size();i++){ 
-          if     (ddh.hubbards[i].precision==0) ddh.hubbards[i].delta=1.0;
-          else if(ddh.hubbards[i].precision==1) ddh.hubbards[i].delta=0.1;
-          else if(ddh.hubbards[i].precision==2) ddh.hubbards[i].delta=0.01;
-          else if(ddh.hubbards[i].precision==3) ddh.hubbards[i].delta=0.001;
-          else if(ddh.hubbards[i].precision==4) ddh.hubbards[i].delta=0.0001;
-          else if(ddh.hubbards[i].precision==5) ddh.hubbards[i].delta=0.00001;
+          ddh.hubbards[i].delta = pow(10.0, -ddh.hubbards[i].precision);
         }
       }else if(stemp.find("$vorbes:")!=string::npos){
         ntmp=0;
@@ -423,12 +389,7 @@ void Erepobj::readinp(const string inputfile){
         }
         if(ntmp>0) ddh.tvorbes=true;
         for(i=0;i<ddh.vorbes.size();i++){ 
-          if     (ddh.vorbes[i].precision==0) ddh.vorbes[i].delta=1.0;
-          else if(ddh.vorbes[i].precision==1) ddh.vorbes[i].delta=0.1;
-          else if(ddh.vorbes[i].precision==2) ddh.vorbes[i].delta=0.01;
-          else if(ddh.vorbes[i].precision==3) ddh.vorbes[i].delta=0.001;
-          else if(ddh.vorbes[i].precision==4) ddh.vorbes[i].delta=0.0001;
-          else if(ddh.vorbes[i].precision==5) ddh.vorbes[i].delta=0.00001;
+          ddh.vorbes[i].delta = pow(10.0, -ddh.vorbes[i].precision);
         }
       }else if(stemp.find("$compounds:")!=string::npos){
         ncompound=0;
