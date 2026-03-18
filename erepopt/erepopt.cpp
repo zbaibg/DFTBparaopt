@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <string>
+#include <unistd.h>
 #include <ga/ga.h>
 #include <ga/std_stream.h>
 #include "tools.hpp"
@@ -504,6 +505,16 @@ double MyObjective(GAGenome& g) {
           stemp="omega_"+ss.str()+"_"+part1+"-"+part2+part3+".skf";
         }else{
           stemp=part1+"-"+part2+part3+".skf";
+        }
+        // If an additional skf for this pair exists in libadddir, skip
+        // checking the parameterized skf in libdir to keep behavior
+        // consistent with makeskf. The actual copy from libadddir will
+        // be done later by the bulk "cp libadddir/*.skf" command.
+        if(erepobj.addskf){
+          string addpair = erepobj.libadddir+"/"+erepobj.velem[i].name+"-"+erepobj.velem[j].name+".skf";
+          if(!access(addpair.c_str(), F_OK)){
+            continue;
+          }
         }
         erepobj.checkskf(stemp,1);
         call+=" cp "+erepobj.libdir+"/"+stemp+" "+ skf_dir+"/"+erepobj.velem[i].name+"-"+erepobj.velem[j].name+".skf; ";

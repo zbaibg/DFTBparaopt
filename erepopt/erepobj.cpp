@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <cmath>
 #include <omp.h>
+#include <unistd.h>
 #include "ga/ga.h"
 #include <ga/std_stream.h>
 #include "erepobj.hpp"
@@ -220,8 +221,18 @@ void Erepobj::get_residual(const GAGenome& g) {
           stemp=part1+"-"+part2+part3+".skf";
         }
         if (fit_type!=0){
-           checkskf(stemp,1);
-           call+=" cp "+libdir+"/"+stemp+" "+ skf_dir+"/"+velem[i].name+"-"+velem[j].name+".skf; ";
+          // If an additional skf for this pair exists in libadddir, skip
+          // checking the parameterized skf in libdir to keep behavior
+          // consistent with makeskf. The actual copy from libadddir will
+          // be done later by the bulk "cp libadddir/*.skf" command.
+          if(addskf){
+            string addpair = libadddir+"/"+velem[i].name+"-"+velem[j].name+".skf";
+            if(!access(addpair.c_str(), F_OK)){
+              continue;
+            }
+          }
+          checkskf(stemp,1);
+          call+=" cp "+libdir+"/"+stemp+" "+ skf_dir+"/"+velem[i].name+"-"+velem[j].name+".skf; ";
         }
       }
     }
