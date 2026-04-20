@@ -11,6 +11,29 @@ input file. The input file is organized in ``block'' sections. Each section
 begins with ``\textbf{\$blockname:}'' and end with ``\textbf{\$end:}''.
 `\#' is the comment character. Everything after `\#' will be skipped.
 
+\section{Overview}
+
+\textbf{erepopt} couples a genetic algorithm (GA) optimizer with external DFTB
+parameter generation and scoring tools. In each GA step, a candidate parameter
+set is translated into DFTB Slater--Koster (\texttt{.skf}) files (via \texttt{skgen}
+and optional post-processing), then evaluated with one of the scoring modes
+selected by \textbf{fit\_type}:
+
+\begin{description}
+\item[\is{fit\_type = 0}] Fit repulsive potentials by calling \textbf{repopt} internally.
+This is the default mode and requires a valid \textbf{rep.in} input for \textbf{repopt}.
+
+\item[\is{fit\_type = 1}] Fit band energies / eigenvalues for each compound against a
+reference list.
+
+\item[\is{fit\_type = 2}] Fit density of states (DOS) curves against reference DOS data.
+This mode runs \textbf{dftb+} and \textbf{dp\_dos}.
+\end{description}
+
+\textbf{Parallelization.} \textbf{erepopt} is compiled with MPI and typically
+run with multiple ranks. Inside each rank it can also use OpenMP for external
+tools via \textbf{nthreads} (exported as \texttt{OMP\_NUM\_THREADS}).
+
 \section{Input}
 
 \subsection{\$system:}
@@ -20,19 +43,91 @@ begins with ``\textbf{\$blockname:}'' and end with ``\textbf{\$end:}''.
    skgen           & string  &          &    skgen                      \\
    onecent         & string  &          &    hfatom\_spin               \\
    twocent         & string  &          &    sktwocnt\_lr               \\
+   skdefversion    & integer &          &    (no default)               \\
+   xcfunctional    & string  &          &    (no default)               \\
+   omega           & Real    &          &    (unset)                    \\
+   superposition   & string  &          &    (no default)               \\
    repopt          & string  &          &    repopt                     \\
    power           & integer &$\geq 2$  &    2                          \\
    dgrid           & Real    &$\geq 0.0$&    0.1                        \\
-   ngrid           & integer &$\geq 1$  &    120                        \\
+   ngrid           & integer &$\geq 1$  &    100                        \\
    grids           & string  &          &    grids                      \\
    rep.in          & string  &          &    rep4e.in                   \\
    libdir          & string  &          &    libskf4e                   \\
-   scratchfolder   & string  &          &    /dev/shm                   \\
-   skfclean        & bool    &  0|1     &    0                          \\
-   outfile         & string  &          &    gaserepfit.log             \\
+   libadddir       & string  &          &    (unset)                    \\
+   repadddir       & string  &          &    (unset)                    \\
+   scratchfolder   & string  &          &    /tmp                       \\
+   skfclean        & bool    &  0|1     &    1                          \\
+   outfile         & string  &          &    erepopt.log                \\
    popinitialfile  & string  &          &    pop.initial.dat            \\
    popfinalfile    & string  &          &    pop.final.dat              \\
 \end{b4tableh}
+
+\begin{description}
+\item[\is{nthreads}] Number of OpenMP threads used for external calls made by \textbf{erepopt}
+(e.g. \texttt{skgen} and \textbf{repopt}). This value is exported as \texttt{OMP\_NUM\_THREADS}.
+\item[\is{dftbversion}] DFTB executable used in \textbf{fit\_type = 1/2} (default: \texttt{dftb+}).
+\item[\is{skgen}] The \texttt{skgen} executable.
+\item[\is{onecent}] The one-center executable used by \texttt{skgen} (default: \texttt{hfatom\_spin}).
+\item[\is{twocent}] The two-center executable used by \texttt{skgen} (default: \texttt{sktwocnt\_lr}).
+\item[\is{skdefversion}] Version number written to \texttt{SkdefVersion} in the generated \texttt{skdef.hsd}.
+\item[\is{xcfunctional}] XC functional string written to \texttt{XCFunctional} in \texttt{skdef.hsd} when \is{omega} is not used.
+\item[\is{omega}] If provided, enables long-range corrected mode and writes
+\texttt{func = xchybrid \{ omega = ... \}} and \texttt{LC omega} markers in \texttt{.skf} files.
+\item[\is{superposition}] Value written to \texttt{Superposition} in \texttt{skdef.hsd}.
+\item[\is{repopt}] Path to \textbf{repopt} executable (used in \textbf{fit\_type = 0}).
+\item[\is{power}] Power used in \texttt{skdef.hsd} (\texttt{PowerCompression}). See \is{\$atomparameters:}.
+\item[\is{dgrid}] \textbf{Deprecated / no effect.} Kept only for backward compatibility; the current implementation
+reads this value but never uses it in any calculation or external call.
+\item[\is{ngrid}] \textbf{Deprecated / no effect.} Originally intended as a grid-length control for \texttt{.skf}
+files, but the present code ignores it when deciding whether an \texttt{.skf} is acceptable. Changing \is{ngrid}
+does not influence the run.
+\item[\is{grids}] Path to a grid file or directory copied into the rank-local scratch working directory before calling
+\textbf{repopt} (\textbf{fit\_type = 0}). This is the only one of the three parameters that is directly used to stage
+input for \textbf{repopt}.
+\item[\is{rep.in}] Repopt input file. In \textbf{fit\_type = 0} this file is read and a rank-local
+\texttt{rep.in} is created in scratch with optional additional blocks (\is{\$d3:}, \is{\$damph:}, \is{\$hubbardderivs:}, \is{\$damphver2:}).
+\item[\is{libdir}] Output directory used to store generated \texttt{.skf} files. \textbf{erepopt} reads from
+and writes to this directory during optimization.
+\item[\is{libadddir}] Optional directory containing additional \texttt{.skf} files that are copied into the working
+SKF directory for scoring (e.g. element pairs you do not want to optimize). If set, all \texttt{*.skf} in this
+directory are copied for each evaluation.
+\item[\is{repadddir}] Optional directory containing repulsive (Spline) tails appended to generated \texttt{.skf} files.
+\item[\is{scratchfolder}] Base scratch directory. Each MPI rank uses subfolders
+\texttt{slakos.tmp\_RANK}, \texttt{buildsks.tmp\_RANK}, and (for \textbf{fit\_type = 2}) \texttt{dftb.tmp\_RANK}.
+\item[\is{skfclean}] If set to 1, \textbf{erepopt} deletes all files in \is{libdir} after each generation
+(this reduces disk usage but can remove intermediate results).
+\item[\is{outfile}] Main log file written by rank 0 (default: \texttt{gaserepfit.log}).
+\item[\is{popinitialfile, popfinalfile}] Population snapshots written by rank 0. Each line is an individual:
+all genes (radii + optional \is{\$d3:}/\is{\$damph:}/\is{\$hubbardderivs:}/\is{\$damphver2:}/\is{\$hubbards:}/\is{\$vorbes:})
+followed by the individual score.
+\end{description}
+
+\textbf{How SKF files are reused and when repulsive tails are appended.}
+During each evaluation, \textbf{erepopt} ensures that all required element-pair SKF files exist.
+For an element pair \(X,Y\), it considers both directions (\texttt{X-Y.skf} and \texttt{Y-X.skf}).
+The logic implemented in the current code is:
+
+\begin{itemize}
+\item \textbf{Prefer existing SKFs from \is{libadddir} (skip generation).}
+If \is{libadddir} is set and a file \texttt{X-Y.skf} exists there, the pair is treated as available and
+\textbf{skgen is not called} for that pair. (The same applies symmetrically for \texttt{Y-X.skf}.)
+\item \textbf{Otherwise, check \is{libdir} for already-generated SKFs.}
+If either \texttt{X-Y.skf} or \texttt{Y-X.skf} exists in \is{libdir} and passes an internal sanity check
+(presence of required markers such as \texttt{Spline}, and when \is{omega} is enabled also matching \texttt{LC omega}),
+the pair is treated as available and \textbf{skgen is not called}.
+\item \textbf{Only if both directions are missing/invalid, call skgen once to generate both.}
+When both \texttt{X-Y.skf} and \texttt{Y-X.skf} are missing (or fail the sanity check), \textbf{erepopt} runs
+\texttt{skgen ... sktable X Y}. This single call produces both direction files, which are then moved into \is{libdir}.
+\item \textbf{Repulsive tails from \is{repadddir} are appended only on the generation path.}
+If \is{repadddir} is set and a matching tail file exists (e.g. \texttt{repadddir/X-Y.skf}), it is appended
+to the newly generated SKF file(s) right after \texttt{skgen} finishes (in the rank-local scratch directory) and
+the resulting SKF files are then moved into \is{libdir}. Therefore, \textbf{SKF files written to \is{libdir} by}
+\textbf{erepopt already include the appended repulsive tails} when \is{repadddir} is enabled and the tail files exist.
+If generation is skipped because an SKF
+already exists in \is{libdir} or \is{libadddir}, \textbf{no additional repulsive-tail post-processing is performed}
+on that existing file.
+\end{itemize}
 
 \textbf{Example:}
 \begin{b4table}
@@ -62,7 +157,7 @@ begins with ``\textbf{\$blockname:}'' and end with ``\textbf{\$end:}''.
 \begin{b4tableh}
   ga             & bool    &  0|1  &   1       \\
   runtest        & bool    &  0|1  &   0       \\
-  fit\_type      & integer & 1|2|4 &   2       \\
+  fit\_type      & integer & 0|1|2 &   0       \\
   popsize        & integer &$\geq$1&   1000    \\
   preserved\_num & integer &$\geq$0&   100     \\
   ngen           & integer &$\geq$0&   1000    \\
@@ -71,6 +166,22 @@ begins with ``\textbf{\$blockname:}'' and end with ``\textbf{\$end:}''.
   readr          & bool    &  0|1  &   1       \\
   restart        & bool    &  0|1  &   1       \\
 \end{b4tableh}
+
+\begin{description}
+\item[\is{ga}] Switch GA on/off. In the current implementation, \textbf{erepopt} performs optimization
+only when \is{ga}=1 and \is{runtest}=0.
+\item[\is{runtest}] If 1, run in testing mode (no GA optimization).
+\item[\is{fit\_type}] Select scoring mode:
+0 = call \textbf{repopt} (repulsive fitting); 1 = eigenvalue fitting; 2 = DOS fitting.
+\item[\is{popsize}] Population size.
+\item[\is{preserved\_num}] Number of elite individuals preserved from generation \(n-1\) to \(n\).
+\item[\is{ngen}] Number of generations.
+\item[\is{pmut}] Mutation probability.
+\item[\is{pcross}] Crossover probability.
+\item[\is{readr}] If 1, the first initialization uses the values given in \is{\$element\_types:} and optional blocks
+(\is{\$d3:}, \is{\$damph:}, etc.) as the initial genome; otherwise random initialization is used.
+\item[\is{restart}] If 1, read \is{popfinalfile} and use its gene values as starting points.
+\end{description}
 
 \textbf{Example:}
 \begin{b4table}
@@ -89,7 +200,47 @@ begins with ``\textbf{\$blockname:}'' and end with ``\textbf{\$end:}''.
 \end{b4table}
 
 
-\subsection{\$element\_type:}
+\subsection{\$variables: (optional)}
+
+This block controls internal coupling rules used to constrain genes for \is{\$element\_types:} via the
+\is{optype} field. These variables are mainly intended for advanced users and development workflows.
+
+\begin{b4tableh}
+  s1       & Real &  & 1.17 \\
+  s2       & Real &  & 1.40 \\
+  s3       & Real &  & 1.20 \\
+  s4       & Real &  & 2.00 \\
+  s5       & Real &  & 2.00 \\
+  s6       & Real &  & 2.00 \\
+  s7       & Real &  & 2.00 \\
+  s8       & Real &  & 2.00 \\
+  s9       & Real &  & 2.00 \\
+  sdenswf  & Real &  & 2.00 \\
+  idrefr   & integer & $\geq 0$ & 3 \\
+\end{b4tableh}
+
+\textbf{Note:} \is{idrefr} is an index into the flattened genome vector (0-based in code) used as a reference
+gene by some \is{optype} coupling schemes.
+
+\subsection{\$element\_types:}
+
+This block defines the list of chemical elements to be optimized, together with their radii gene bounds,
+initial values, and discretization precision. Each line has the form:
+
+\begin{center}
+  \texttt{ElementName  optype  lmax  (min r max prec)$_{lmax+2}$}
+\end{center}
+
+\begin{description}
+\item[\is{ElementName}] Element symbol used by \texttt{skgen} (e.g. \texttt{H}, \texttt{C}, \texttt{O}). Case sensitive.
+\item[\is{optype}] Integer controlling coupling constraints among radii genes (advanced usage; see \is{\$variables:}).
+\item[\is{lmax}] Maximum angular momentum channel. The number of radii genes for this element is \(lmax+2\):
+one density-compression radius (index 0) and \((lmax+1)\) wave-compression radii (S, P, D, ...).
+\item[\is{min, r, max}] Minimum / initial / maximum value for each radius gene.
+\item[\is{prec}] Precision level, used to set the mutation step size \(\delta\):
+0 \(\rightarrow\) 1.0, 1 \(\rightarrow\) 0.1, 2 \(\rightarrow\) 0.01, 3 \(\rightarrow\) 0.001, 4 \(\rightarrow\) 0.0001, 5 \(\rightarrow\) 0.00001.
+\end{description}
+
 \textbf{Example:}
 \begin{b9table}
   \$element\_types: & & &               &    &                &    &                 &    \\                 
@@ -100,7 +251,48 @@ begins with ``\textbf{\$blockname:}'' and end with ``\textbf{\$end:}''.
   \$end   &     &       &               &    &                &    &                 &    \\      
 \end{b9table}
 
-\subsection{\$d3:}
+\subsection{\$atomparameters: (required for SK generation)}
+
+This block provides per-element \texttt{AtomParameters} entries for \texttt{skdef.hsd}. Each element starts
+with the element name on its own line, followed by a sub-block terminated by \textbf{\$subend}. Supported
+keywords are:
+
+\begin{description}
+\item[\is{PowerCompression}] Integer power used in \texttt{PowerCompression}.
+\item[\is{ShellResolved}] Value written to \texttt{ShellResolved}.
+\end{description}
+
+All other lines inside the element sub-block are copied verbatim into \texttt{skdef.hsd}.
+
+\subsection{\$onecenterparameters: (required for SK generation)}
+
+Lines inside this block are copied verbatim into the \texttt{OnecenterParameters} section of \texttt{skdef.hsd}.
+
+\subsection{\$twocenterparameters: (required for SK generation)}
+
+Lines inside this block are copied verbatim into the \texttt{TwoCenterParameters} section of \texttt{skdef.hsd}.
+
+\subsection{\$addhamiltonian: (optional)}
+
+Lines inside this block are appended verbatim inside the \texttt{Hamiltonian = DFTB \{ ... \}} section of the
+rank-local \texttt{dftb\_in.hsd} file used for \textbf{fit\_type = 1/2}. This is the primary way to add DFTB+
+Hamiltonian options (e.g. SCC parameters, dispersion, third-order terms, etc.).
+
+\subsection{\$atomic\_energy: (optional; used in fit\_type=1)}
+
+This block provides per-element atomic energy values used to compute a baseline energy \is{b0} for each compound
+in \textbf{fit\_type = 1}. Each line is:
+\begin{center}
+  \texttt{element\_name  atomic\_energy}
+\end{center}
+
+\subsection{\$d3: (optional)}
+
+This block defines D3-related scalar parameters optimized together with radii. Each line is:
+\begin{center}
+  \texttt{name  min  value  max  precision}
+\end{center}
+
 \textbf{Example:}
 \begin{b4table}
   \$d3:    &                &    &  \\
@@ -111,7 +303,42 @@ begins with ``\textbf{\$blockname:}'' and end with ``\textbf{\$end:}''.
   \$end:   &                &    &  \\
 \end{b4table}
 
-\subsection{\$vorbes:}
+\subsection{\$damph: (optional)}
+
+Damping parameter optimized as a single scalar. The line format is:
+\begin{center}
+  \texttt{min  value  max  precision}
+\end{center}
+
+\subsection{\$hubbardderivs: and \$hubbardderivsfull: (optional)}
+
+Hubbard derivative parameters optimized as per-element scalars. Each line is:
+\begin{center}
+  \texttt{name  min  value  max  precision}
+\end{center}
+
+\textbf{Note:} \is{\$hubbardderivsfull:} enables a different internal flag but uses the same line format.
+
+\subsection{\$damphver2: (optional)}
+
+Second version of damping parameters, optimized as per-element scalars. Each line is:
+\begin{center}
+  \texttt{name  min  value  max  precision}
+\end{center}
+
+\subsection{\$hubbards: (optional)}
+
+Customized Hubbard parameters per element. Each line is:
+\begin{center}
+  \texttt{name  type  min  value  max  precision}
+\end{center}
+
+\subsection{\$vorbes: (optional)}
+
+Customized on-site parameters per element. Each line is:
+\begin{center}
+  \texttt{name  type  min  value  max  precision}
+\end{center}
   
 \textbf{Example:}
 \begin{b4table}
@@ -120,8 +347,64 @@ begins with ``\textbf{\$blockname:}'' and end with ``\textbf{\$end:}''.
   \$end:   &    &                     &     \\
 \end{b4table}
 
+\subsection{\$compounds: (required for fit\_type=1/2)}
+
+This block defines the training set. Each line is:
+\begin{center}
+  \texttt{xyzfile  charge  start  end  gauss  reference\_data  weight}
+\end{center}
+
+\begin{description}
+\item[\is{xyzfile}] Geometry in XYZ format. Element names in the XYZ are lowercased internally.
+\item[\is{charge}] Total charge passed to DFTB+.
+\item[\is{start, end}] Energy window (in the same units as the reference data) used for scoring.
+\item[\is{gauss}] Gaussian broadening used by \texttt{dp\_dos} (fit\_type=2) and stored for logging.
+\item[\is{reference\_data}] Reference file:
+in \textbf{fit\_type = 1} it is read as a list of eigenvalues and occupations;
+in \textbf{fit\_type = 2} it is read as a DOS curve (energy, DOS).
+\item[\is{weight}] Weighting factor. For \textbf{fit\_type = 2}, special negative values implement
+energy-dependent weighting: \(-1\) linear, \(-2\) quadratic, \(-4\) quartic weighting from start to end.
+\end{description}
+
 \section{Output}
 
+\textbf{erepopt} writes several outputs during a GA run:
+
+\begin{description}
+\item[\is{Main log (\is{outfile})}] Written by rank 0. It contains progress lines during evolution and ends with
+``\textbf{** erepobj normal termination **}'' on success. After GA completion it prints an ``interpreted input''
+summary, the final optimized parameters, and per-compound errors.
+
+\item[\is{score.dat}] GA score history written by GALib (frequency controlled by \is{scoref}/\is{flushf}).
+\item[\is{\is{popinitialfile}, \is{popfinalfile}}] Population snapshots written by rank 0 at initialization and
+after every generation.
+\item[\is{Generated SKF files}] Stored in \is{libdir}. File names encode the element radii and optional parameter
+blocks, e.g. \texttt{X\_d...\_w...-Y\_d...\_w...\_hub...\_vor....skf} (and an additional \texttt{omega\_...} prefix if \is{omega} is set).
+\item[\is{Temporary scratch}] Rank-local folders under \is{scratchfolder} are created and deleted during the run.
+\end{description}
+
 \section{Tips}
+
+\begin{description}
+\item[\is{Run under a scheduler}] Since \textbf{erepopt} uses MPI, on clusters you typically run it with
+\texttt{srun} (recommended) or \texttt{mpirun}. Example (2 MPI ranks, 8 threads each):
+{\scriptsize
+\begin{verbatim}
+srun -n 2 -c 8 erepopt erep.inp
+\end{verbatim}}
+
+\item[\is{Validate tool paths first}] Ensure \is{skgen}, \is{onecent}, \is{twocent}, \is{repopt}, \is{dftbversion},
+and (for \textbf{fit\_type = 2}) \texttt{dp\_dos} are available in \texttt{\$PATH} or specified with absolute paths.
+
+\item[\is{Start from a small training set}] Debug input formats and external tool calls with 1--2 compounds and a small
+\is{popsize}/\is{ngen} before scaling up.
+
+\item[\is{Be careful with skfclean}] Setting \is{skfclean}=1 removes all \texttt{.skf} files in \is{libdir} each generation,
+which can make debugging difficult. Consider using \is{skfclean}=0 while developing.
+
+\item[\is{Common failure modes}] Most runtime errors come from missing files or failing external calls.
+If you see an error mentioning \texttt{rep.out} or missing DOS output, inspect the corresponding scratch directory
+for the rank and check the external program logs (\texttt{rep.out}, \texttt{log}, \texttt{dos.dat}).
+\end{description}
 
 

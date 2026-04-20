@@ -1,4 +1,4 @@
-\usepackage{a4}
+\usepackage[a4paper]{geometry}
 \usepackage[latin2]{inputenc}
 \usepackage{t1enc}
 \usepackage{amsmath}
@@ -9,7 +9,8 @@
 \usepackage{mathptmx}
 \usepackage{float}
 \usepackage{array}
-\usepackage[english]{babel}
+%\usepackage[english]{babel}
+\usepackage{babel}
 \usepackage{color}
 \usepackage{tabularx}
 \usepackage{makeidx}
@@ -18,14 +19,15 @@
 \usepackage{soul}                            % for todonote
 \usepackage{fancyvrb}
 %\usepackage[colorinlistoftodos,disable]{todonotes} %disable the note
-\usepackage{listings,lstautogobble}
+%\usepackage{listings,lstautogobble}
+\usepackage{listings}
 \lstset{
   language=Pascal,
   basicstyle=\ttfamily,
   columns=fullflexible,
   breaklines=true,
+  % autogobble=true, % requires lstautogobble.sty, which may not be installed
   showstringspaces=true,
-  autogobble=true,
   postbreak=\raisebox{0ex}[0ex][0ex]{\color{red}$\hookrightarrow$\space}
 }
 \definecolor{lightmagenta}{cmyk}{0,0.333,0,0}
