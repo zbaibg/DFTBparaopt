@@ -1,7 +1,7 @@
 #/bin/bash
 
-CXX="icpc"
-#CXX="g++"
+#CXX="icpc"
+CXX="g++"
 
 if [ ! -f galib247.tgz ]; then
   wget http://lancet.mit.edu/ga/dist/galib247.tgz
@@ -30,13 +30,13 @@ make clean
 make install | tee make.log
 cd ../
 
-if [ ! -f 3.3.7.tar.gz ]; then
-  wget http://bitbucket.org/eigen/eigen/get/3.3.7.tar.gz
+if [ ! -f eigen-3.3.7.tar.gz ]; then
+  wget https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.gz
 fi
-rm -rf eigen-eigen-323c052e1731
-tar -xf 3.3.7.tar.gz
+rm -rf eigen-3.3.7
+tar -xf eigen-3.3.7.tar.gz
 rm -rf eigen3.37
-mv eigen-eigen-323c052e1731 eigen3.37
+mv eigen-3.3.7 eigen3.37
 
 cd repopt
 if [ $CXX == "g++" ]; then
