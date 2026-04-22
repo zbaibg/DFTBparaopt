@@ -1,0 +1,9 @@
+# artifacts produced by run.sh
+dftb.tmp/
+dftb_cache.dat
+rep1_save.out
+rep1_load.out
+rep1.diff
+score.dat
+pop.initial.dat
+pop.final.dat

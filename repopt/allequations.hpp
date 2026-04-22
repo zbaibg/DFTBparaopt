@@ -24,10 +24,15 @@ class Molecule {
 protected:
 
 private:
-  MatrixXd fel;
-  MatrixXd fref;
 
 public:
+  // `fel` is the DFTB force matrix (natom x 3, atomic units) and `fref`
+  // is the reference force matrix read from the optional `finp` file. Both
+  // used to be private but need to be accessed by the DFTB dataset
+  // save/load helpers in dataset.{hpp,cpp}. Keeping them public matches
+  // the style used for `frefmel` further down.
+  MatrixXd  fel;
+  MatrixXd  fref;
   string    name, dftbin, abbr, finp;
   double    ebind, eel, teel, error, ebindmel;
   int       nelem;

@@ -32,6 +32,8 @@ Following input block must be presented  in all kind of running job.
   idecompose     & integer & 1:7   &  6       \\
   ilmsfit        & integer & 1:4   &  4       \\
   nreplicate     & integer &$\geq$1&  1       \\
+  dataset\_save  & string  &       &  (none)  \\
+  dataset\_load  & string  &       &  (none)  \\
 \end{b4tableh}
 
 \begin{description}
@@ -61,6 +63,28 @@ Following input block must be presented  in all kind of running job.
                             only for testing purpose to measure the effect
                             of decomposition and regression methods on the
                             computing time. 
+  \item[\is{dataset\_save }] If non-empty, after every molecule in
+                            \textbf{\$compounds:} /
+                            \textbf{\$definition\_reactions:} has been
+                            initialised, write its DFTB total Mermin free
+                            energy (\textit{eel}) and force matrix
+                            (\textit{fel}, $n_{atom}\times 3$) to the given
+                            file. Numbers are written in scientific
+                            notation with 17 significant digits, which
+                            round-trips every IEEE~754 double exactly, so
+                            the cache introduces no additional fitting
+                            error on reload. Default: disabled.
+  \item[\is{dataset\_load }] If non-empty, read a previously written
+                            dataset (see \texttt{dataset\_save}) and skip
+                            the DFTB driver call for any molecule whose
+                            xyz filename appears in the cache. Molecules
+                            that are not in the cache fall back to a
+                            real DFTB call, so incremental caches work.
+                            Regenerate the cache whenever you change the
+                            DFTB Hamiltonian settings
+                            (\texttt{dftb\_in.hsd} template, SKF
+                            directory, d3/damph/hubbardderivs/damphver2
+                            values, \ldots). Default: disabled.
 \end{description}
 
 \textbf{Example:}

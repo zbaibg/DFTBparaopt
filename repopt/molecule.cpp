@@ -8,6 +8,7 @@
 #include "tools.hpp"
 #include "auxiliary.hpp"
 #include "allequations.hpp"
+#include "dataset.hpp"
 
 using namespace std;
 extern bool runtest;
@@ -118,9 +119,44 @@ void Molecule::init(const string& xyzfilename, const double ediss_, const double
     fin.close();
   }
 
+  // Lazy-load the DFTB dataset cache on the first molecule ever
+  // initialised (rather than requiring a dedicated hook in readinp),
+  // so the cache is populated regardless of whether we are being
+  // invoked from $compounds: or $definition_reactions:.
+  if (!dftb_dataset_loaded) load_dftb_dataset(dataset_load_path);
+
+  // If the current molecule is in the cache, skip the DFTB call entirely
+  // and reuse the cached eel / fel. Sanity checks, ebindmel and the
+  // distance matrix further down run unchanged so every other quantity
+  // stays consistent with a fresh DFTB run.
+  map<string, DftbMolData>::const_iterator cache_it =
+      dftb_dataset_cache.find(name);
+  const bool use_cache = (cache_it != dftb_dataset_cache.end());
+  if (use_cache) {
+    if (cache_it->second.fel.rows() != natom) {
+      cerr << endl << "ERROR: dataset entry for \"" << name
+           << "\" has natom=" << cache_it->second.fel.rows()
+           << " but xyz file has natom=" << natom << endl
+           << "exit repopt" << endl << endl;
+      exit(1);
+    }
+    eel = cache_it->second.eel;
+    for (int i = 0; i < natom; i++) {
+      fel(i, 0) = cache_it->second.fel(i, 0);
+      fel(i, 1) = cache_it->second.fel(i, 1);
+      fel(i, 2) = cache_it->second.fel(i, 2);
+    }
+  }
+
   //calculate eel and ebind - eel = ebindmel and get forces fel
   //string stilltochange  = "rm -rf dftb.tmp/; mkdir -p dftb.tmp; auto_xyz2gen " + name + " > dftb.tmp/in.gen";
 
+  // Wrap the full DFTB-driver block (working-dir setup, input generation,
+  // external call, detailed.out / log parsing, SCC sanity checks) in a
+  // single `if (!use_cache)` guard. Everything after this block (ebindmel,
+  // distance matrix) is unconditional and uses the cached or freshly
+  // computed eel/fel uniformly.
+  if (!use_cache) {
   string stilltochange  = "rm -rf " + foldername + "/; mkdir -p " + foldername + ";";
   int iq = system(stilltochange.c_str()); 
   if(runxtb){
@@ -312,6 +348,7 @@ void Molecule::init(const string& xyzfilename, const double ediss_, const double
       fel(i,2)=999999.9;
     }
   }
+  } // end if(!use_cache) -- skip entire DFTB driver block when cached
   
   //iq = system("rm -rf dftb.tmp/");
 

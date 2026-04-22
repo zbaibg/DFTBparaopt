@@ -4,6 +4,7 @@
 #include "tools.hpp"
 #include "auxiliary.hpp"
 #include "allequations.hpp"
+#include "dataset.hpp"
 
 using namespace std;
 extern double gtol;
@@ -58,6 +59,13 @@ void Allequations::readinp(const string inputfile){
           if(stemp.find("xtbarg ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); xtbarg=ctemp2; runxtb=true;}
           if(stemp.find("xtbarg2 ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); xtbarg2=ctemp2; runxtb=true;}
           if(stemp.find("mopacarg ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); mopacarg=ctemp2; runmopac=true;}
+          // DFTB dataset cache options.
+          //   dataset_load <path>  skip DFTB for any molecule found in <path>
+          //   dataset_save <path>  after all molecules are initialised, write
+          //                        the DFTB eel/fel cache to <path> with full
+          //                        double precision (round-trip safe).
+          if(stemp.find("dataset_load ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); dataset_load_path=ctemp2;}
+          if(stemp.find("dataset_save ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); dataset_save_path=ctemp2;}
         }
       }else if(stemp.find("$variables:")!=string::npos){
         while(infile.getline(cline,512)){
@@ -352,6 +360,10 @@ void Allequations::readinp(const string inputfile){
       }
     }   
   }
+  // Persist the DFTB eel/fel dataset for reuse by later runs once every
+  // molecule has been initialised (irrespective of whether they were just
+  // computed from scratch or loaded from a previous cache).
+  save_dftb_dataset(dataset_save_path, vmol, vreamol);
 }
 
 
