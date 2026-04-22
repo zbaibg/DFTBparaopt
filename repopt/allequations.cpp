@@ -89,14 +89,25 @@ void Allequations::get_minRbond(){
 }
 
 void Allequations::validate_grid_knot_spacing(){
-  // Inner knots j = 1 .. nknots-2 (nknots-2 points) lie in
-  // [minRbond+min_step01, cutoff-max_step] (MyObjective). v[0] and cutoff are outside
-  // this 1D corridor. Between consecutive inner knots there are (nknots-2)-1 = nknots-3
-  // gaps, each must be able to reach at least max_step, so a necessary length is
-  // (nknots-3)*max_step (0 if nknots <= 3).
-  // (min_step01 is read in Angstrom; convert to Bohr like main() does later.)
+  // Feasibility check for the GA corridor of each potential's inner knots.
+  //
+  // Inner knots j = 1 .. nknots-2 must lie in
+  //   [ max(minRbond+min_step01, has_low[j] ? vr_low[j] : -inf),
+  //     min(cutoff-max_step,     has_up [j] ? vr_up [j] : +inf) ]
+  // and consecutive inner knots must be separated by at least max_step
+  // (enforced by the push-apart loops in MyObjective).
+  //
+  // We build per-knot effective lo/hi, then propagate the max_step spacing
+  // in both directions so each knot's corridor also reflects the user-
+  // supplied UP/LOW bounds of ALL other knots. If any knot ends up with
+  // lo > hi, the grid is infeasible and we report which knot (and which
+  // upstream/downstream UP or LOW caused the squeeze) before exiting.
+  //
+  // (min_step01 is read in Angstrom; convert to Bohr like main() does.)
   const double min_step01_bohr = min_step01 / AA_Bohr;
-  const double eps = 1e-9;
+  const double eps   = 1e-9;
+  const double NEGINF = -1e300;
+  const double POSINF =  1e300;
 
   for (int ipot = 0; ipot < (int)vpot.size(); ipot++){
     if (vpot[ipot].gridname.size() >= 8 &&
@@ -108,41 +119,111 @@ void Allequations::validate_grid_knot_spacing(){
     const double max_step = vpot[ipot].max_step;
     const double minRbond = vpot[ipot].minRbond;
 
-    const double lo_inner = minRbond + min_step01_bohr;
-    const double hi_inner = cutoff - max_step;
-    const double eff_span = hi_inner - lo_inner;
-    const int    n_gap_inner = nk - 3 > 0 ? nk - 3 : 0;
-    const double need        = static_cast<double>(n_gap_inner) * max_step;
-
-    // Explicit: inner corridor invalid iff (cutoff - max_step) < (minRbond + min_step01).
-    // Do not rely only on eff_span < need when need==0 (nknots <= 3).
-    if (hi_inner < lo_inner - eps){
+    // First check the base corridor (no UP/LOW): MyObjective always
+    // clamps inner knots into [minRbond+min_step01, cutoff-max_step],
+    // so this corridor must be non-empty even before any user bound.
+    const double lo_base = minRbond + min_step01_bohr;
+    const double hi_base = cutoff   - max_step;
+    if (hi_base < lo_base - eps){
       cerr << endl << "ERROR:" << endl
            << "  Grid knot spacing (potential \"" << vpot[ipot].potname << "\", file \""
            << vpot[ipot].gridname << "\"):" << endl
            << "  (cutoff - max_step) < (minRbond + min_step01); no valid inner-knot interval." << endl
            << "  cutoff = " << cutoff * AA_Bohr << " A, max_step = " << max_step * AA_Bohr << " A  =>  cutoff-max_step = "
-           << hi_inner * AA_Bohr << " A," << endl
+           << hi_base * AA_Bohr << " A," << endl
            << "  minRbond = " << minRbond * AA_Bohr << " A, min_step01 = " << min_step01 << " A  =>  minRbond+min_step01 = "
-           << lo_inner * AA_Bohr << " A." << endl
+           << lo_base * AA_Bohr << " A." << endl
            << "  Increase cutoff, decrease max_step, or decrease minRbond / min_step01." << endl
            << "exit repopt" << endl << endl;
       exit(1);
     }
 
-    if (eff_span + eps < need){
-      cerr << endl << "ERROR:" << endl
-           << "  Grid knot spacing (potential \"" << vpot[ipot].potname << "\", file \""
-           << vpot[ipot].gridname << "\"):" << endl
-           << "  inner corridor length (cutoff - max_step) - (minRbond + min_step01) is too small for "
-           << nk << " knots with this max_step." << endl
-           << "  cutoff = " << cutoff * AA_Bohr << " A, max_step = " << max_step * AA_Bohr << " A," << endl
-           << "  minRbond = " << minRbond * AA_Bohr << " A, min_step01 = " << min_step01 << " A," << endl
-           << "  inner corridor length = " << eff_span * AA_Bohr << " A," << endl
-           << "  but (nknots-3)*max_step = " << need * AA_Bohr << " A is required (gaps between the nknots-2 inner knots)." << endl
-           << "  Reduce nknots, increase cutoff / minRbond margin, decrease max_step, or adjust min_step01." << endl
-           << "exit repopt" << endl << endl;
-      exit(1);
+    // No inner knots -> only the base check is meaningful.
+    if (nk <= 2) continue;
+
+    // Build per-knot effective lo/hi, seeded with base + any user UP/LOW.
+    // Index j ranges over inner knots 1..nk-2; we size the vectors to nk
+    // for index convenience and leave endpoints unused.
+    vector<double> eff_lo(nk, NEGINF);
+    vector<double> eff_hi(nk, POSINF);
+    // Track which "source" (base / LOW@j' / UP@j') is currently the
+    // tightest on each side, so error messages pinpoint the cause.
+    // src_lo[j] / src_hi[j] = -1 means the base (minRbond+min_step01 or
+    // cutoff-max_step); >= 0 means the knot index whose user bound is
+    // responsible. Initialized to -1 (base).
+    vector<int>    src_lo(nk, -1);
+    vector<int>    src_hi(nk, -1);
+
+    for (int j = 1; j <= nk - 2; j++){
+      eff_lo[j] = lo_base;
+      eff_hi[j] = hi_base;
+      if ((int)vpot[ipot].has_low.size() > j && vpot[ipot].has_low[j]){
+        if (vpot[ipot].vr_low[j] > eff_lo[j]){
+          eff_lo[j] = vpot[ipot].vr_low[j];
+          src_lo[j] = j;
+        }
+      }
+      if ((int)vpot[ipot].has_up.size() > j && vpot[ipot].has_up[j]){
+        if (vpot[ipot].vr_up[j] < eff_hi[j]){
+          eff_hi[j] = vpot[ipot].vr_up[j];
+          src_hi[j] = j;
+        }
+      }
+    }
+
+    // Propagate the max_step spacing: knot j must sit at least
+    // max_step above knot j-1's minimum, and at least max_step below
+    // knot j+1's maximum. Iterated linearly over inner knots in each
+    // direction (this is sufficient because max_step is constant).
+    for (int j = 2; j <= nk - 2; j++){
+      const double cand = eff_lo[j - 1] + max_step;
+      if (cand > eff_lo[j]){
+        eff_lo[j] = cand;
+        src_lo[j] = src_lo[j - 1];  // propagate the original source
+      }
+    }
+    for (int j = nk - 3; j >= 1; j--){
+      const double cand = eff_hi[j + 1] - max_step;
+      if (cand < eff_hi[j]){
+        eff_hi[j] = cand;
+        src_hi[j] = src_hi[j + 1];
+      }
+    }
+
+    // Feasibility: every inner knot must have a non-empty corridor.
+    for (int j = 1; j <= nk - 2; j++){
+      if (eff_lo[j] > eff_hi[j] + eps){
+        cerr << endl << "ERROR:" << endl
+             << "  Grid knot spacing (potential \"" << vpot[ipot].potname << "\", file \""
+             << vpot[ipot].gridname << "\"):" << endl
+             << "  inner knot " << j << " has empty corridor under the current UP/LOW + max_step constraints." << endl
+             << "  effective lower bound = " << eff_lo[j] * AA_Bohr << " A";
+        if (src_lo[j] < 0){
+          cerr << "  (from minRbond+min_step01 = " << lo_base * AA_Bohr
+               << " A, possibly +i*max_step)";
+        } else {
+          cerr << "  (from LOW on knot " << src_lo[j] << " = "
+               << vpot[ipot].vr_low[src_lo[j]] * AA_Bohr
+               << " A, propagated via max_step)";
+        }
+        cerr << "," << endl
+             << "  effective upper bound = " << eff_hi[j] * AA_Bohr << " A";
+        if (src_hi[j] < 0){
+          cerr << "  (from cutoff-max_step = " << hi_base * AA_Bohr
+               << " A, possibly -i*max_step)";
+        } else {
+          cerr << "  (from UP on knot " << src_hi[j] << " = "
+               << vpot[ipot].vr_up[src_hi[j]] * AA_Bohr
+               << " A, propagated via max_step)";
+        }
+        cerr << "." << endl
+             << "  cutoff = " << cutoff   * AA_Bohr << " A, max_step = " << max_step * AA_Bohr << " A," << endl
+             << "  minRbond = " << minRbond * AA_Bohr << " A, min_step01 = " << min_step01 << " A, nknots = " << nk << "." << endl
+             << "  Loosen the offending UP/LOW, reduce nknots, increase cutoff / minRbond margin," << endl
+             << "  decrease max_step, or adjust min_step01." << endl
+             << "exit repopt" << endl << endl;
+        exit(1);
+      }
     }
   }
 }

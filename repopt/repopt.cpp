@@ -378,6 +378,40 @@ double MyObjective(GAGenome& g) {
 
   }
 
+  // Strict-ascending safety net: after the clamp + push-apart pipeline
+  // every knot must sit strictly above the previous one. If a tight
+  // user UP/LOW makes this impossible MyObjective cannot recover, and
+  // silently writing a non-ascending vr leads to bogus splines (division
+  // by zero, NaN potentials, and the "non-ascending knots" bug in
+  // rep.out). If validate_grid_knot_spacing did its job this should
+  // never fire; if it does, the grid file is infeasible and we exit
+  // rather than returning a corrupted result.
+  {
+    const double asc_eps = 1e-9;
+    for(i=0;i<(int)allequations.vpot.size();i++){
+      const int nk = allequations.vpot[i].nknots;
+      for(j=0;j<nk-1;j++){
+        const double a = allequations.vpot[i].vr[j];
+        const double b = allequations.vpot[i].vr[j+1];
+        if(b <= a + asc_eps){
+          cerr << endl << "ERROR:" << endl
+               << "  MyObjective produced non-ascending knots for potential \""
+               << allequations.vpot[i].potname << "\"." << endl
+               << "  knot " << j   << " = " << a * AA_Bohr << " A," << endl
+               << "  knot " << j+1 << " = " << b * AA_Bohr << " A." << endl
+               << "  Full knot vector (A):";
+          for(k=0;k<nk;k++) cerr << "  " << allequations.vpot[i].vr[k] * AA_Bohr;
+          cerr << endl
+               << "  This usually means the grid file \"" << allequations.vpot[i].gridname
+               << "\" has UP/LOW bounds that are inconsistent with minRbond," << endl
+               << "  min_step01, cutoff or max_step. Relax the offending bound or adjust those parameters." << endl
+               << "exit repopt" << endl << endl;
+          exit(1);
+        }
+      }
+    }
+  }
+
   idx=0;
   for(i=0;i<allequations.vpot.size();i++){ 
     for(j=0;j<allequations.vpot[i].nknots;j++){ 
