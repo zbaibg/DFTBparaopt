@@ -1,0 +1,93 @@
+Geometry = GenFormat {
+4 C
+C H
+1 1 0.000000000 0.000000000 0.597000000
+2 1 0.000000000 0.000000000 -0.497000000
+3 2 0.000000000 0.000000000 1.659000000
+4 2 0.000000000 0.000000000 -1.559000000
+}
+Hamiltonian = DFTB {
+  Solver = RelativelyRobust {}
+  Charge = 0
+  SCC = Yes
+  SCCTolerance = 1e-9
+  MaxAngularMomentum = {
+    H = "s"
+    C = "p"
+  }
+  SlaterKosterFiles = Type2Filenames {
+    Prefix = "../eskf/"
+    Suffix = ".skf"
+    Separator = "-"
+    LowerCaseTypeName = No
+  }
+  PolynomialRepulsive = {}
+  Hybrid = None {}
+  ShellResolvedSCC = No
+  OldSKInterpolation = No
+  ReadInitialCharges = No
+  InitialCharges = {}
+  ConvergentSCCOnly = Yes
+  HCorrection = None {}
+  SpinPolarisation = {}
+  ElectricField = {}
+  MaxSCCIterations = 100
+  OnSiteCorrection = {}
+  Dispersion = {}
+  Solvation = {}
+  ElectronicConstraints = {}
+  Electrostatics = GammaFunctional {}
+  Mdftb = None {}
+  ThirdOrder = No
+  ThirdOrderFull = No
+  Differentiation = FiniteDiff {
+    Delta = 1.2207031250000000E-004
+  }
+  ForceEvaluation = "Traditional"
+  Mixer = Broyden {
+    MixingParameter = 0.20000000000000001
+    InverseJacobiWeight = 1.0000000000000000E-002
+    MinimalWeight = 1.0000000000000000
+    MaximalWeight = 100000.00000000000
+    WeightFactor = 1.0000000000000000E-002
+  }
+  Filling = Fermi {
+    Temperature = 0.0000000000000000
+  }
+}
+ParserOptions = {
+  ParserVersion = 14
+  IgnoreUnprocessedNodes = Yes
+  WriteHSDInput = Yes
+  StopAfterParsing = No
+}
+Analysis = {
+  PrintForces = Yes
+  ProjectStates = {}
+  WriteEigenvectors = No
+  WriteBandOut = Yes
+  MullikenAnalysis = Yes
+  WriteNetCharges = No
+  AtomResolvedEnergies = No
+}
+Reks = None {}
+Driver = {}
+ExcitedState = {}
+Options = {
+  WriteDetailedOut = Yes
+  WriteAutotestTag = No
+  WriteDetailedXML = No
+  WriteResultsTag = No
+  RestartFrequency = 20
+  RandomSeed = 0
+  WriteHS = No
+  WriteRealHS = No
+  MinimiseMemoryUsage = No
+  ShowFoldedCoords = No
+  TimingVerbosity = 1
+  WriteCharges = Yes
+  WriteChargesAsText = No
+  BinaryAccessTypes = {
+ "stream"
+  }
+}

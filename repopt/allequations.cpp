@@ -9,6 +9,8 @@
 #include "tools.hpp"
 
 using namespace std;
+
+extern double min_step01;
 using namespace Eigen;
 
 extern bool runtest;
@@ -86,6 +88,65 @@ void Allequations::get_minRbond(){
   }
 }
 
+void Allequations::validate_grid_knot_spacing(){
+  // Inner knots j = 1 .. nknots-2 (nknots-2 points) lie in
+  // [minRbond+min_step01, cutoff-max_step] (MyObjective). v[0] and cutoff are outside
+  // this 1D corridor. Between consecutive inner knots there are (nknots-2)-1 = nknots-3
+  // gaps, each must be able to reach at least max_step, so a necessary length is
+  // (nknots-3)*max_step (0 if nknots <= 3).
+  // (min_step01 is read in Angstrom; convert to Bohr like main() does later.)
+  const double min_step01_bohr = min_step01 / AA_Bohr;
+  const double eps = 1e-9;
+
+  for (int ipot = 0; ipot < (int)vpot.size(); ipot++){
+    if (vpot[ipot].gridname.size() >= 8 &&
+        vpot[ipot].gridname.substr(0, 8) == "autogrid") continue;
+    const int nk = vpot[ipot].nknots;
+    if (nk < 2) continue;
+
+    const double cutoff   = vpot[ipot].vr[nk - 1];
+    const double max_step = vpot[ipot].max_step;
+    const double minRbond = vpot[ipot].minRbond;
+
+    const double lo_inner = minRbond + min_step01_bohr;
+    const double hi_inner = cutoff - max_step;
+    const double eff_span = hi_inner - lo_inner;
+    const int    n_gap_inner = nk - 3 > 0 ? nk - 3 : 0;
+    const double need        = static_cast<double>(n_gap_inner) * max_step;
+
+    // Explicit: inner corridor invalid iff (cutoff - max_step) < (minRbond + min_step01).
+    // Do not rely only on eff_span < need when need==0 (nknots <= 3).
+    if (hi_inner < lo_inner - eps){
+      cerr << endl << "ERROR:" << endl
+           << "  Grid knot spacing (potential \"" << vpot[ipot].potname << "\", file \""
+           << vpot[ipot].gridname << "\"):" << endl
+           << "  (cutoff - max_step) < (minRbond + min_step01); no valid inner-knot interval." << endl
+           << "  cutoff = " << cutoff * AA_Bohr << " A, max_step = " << max_step * AA_Bohr << " A  =>  cutoff-max_step = "
+           << hi_inner * AA_Bohr << " A," << endl
+           << "  minRbond = " << minRbond * AA_Bohr << " A, min_step01 = " << min_step01 << " A  =>  minRbond+min_step01 = "
+           << lo_inner * AA_Bohr << " A." << endl
+           << "  Increase cutoff, decrease max_step, or decrease minRbond / min_step01." << endl
+           << "exit repopt" << endl << endl;
+      exit(1);
+    }
+
+    if (eff_span + eps < need){
+      cerr << endl << "ERROR:" << endl
+           << "  Grid knot spacing (potential \"" << vpot[ipot].potname << "\", file \""
+           << vpot[ipot].gridname << "\"):" << endl
+           << "  inner corridor length (cutoff - max_step) - (minRbond + min_step01) is too small for "
+           << nk << " knots with this max_step." << endl
+           << "  cutoff = " << cutoff * AA_Bohr << " A, max_step = " << max_step * AA_Bohr << " A," << endl
+           << "  minRbond = " << minRbond * AA_Bohr << " A, min_step01 = " << min_step01 << " A," << endl
+           << "  inner corridor length = " << eff_span * AA_Bohr << " A," << endl
+           << "  but (nknots-3)*max_step = " << need * AA_Bohr << " A is required (gaps between the nknots-2 inner knots)." << endl
+           << "  Reduce nknots, increase cutoff / minRbond margin, decrease max_step, or adjust min_step01." << endl
+           << "exit repopt" << endl << endl;
+      exit(1);
+    }
+  }
+}
+
 void Allequations::prepare(const string inputfile) {
   int ieq=0;
 
@@ -94,6 +155,7 @@ void Allequations::prepare(const string inputfile) {
   get_autogrids();
   sizeeqsys();    
   get_minRbond();
+  validate_grid_knot_spacing();
 }
 
 void Allequations::reset() {

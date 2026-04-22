@@ -39,6 +39,12 @@ public:
   int     ordspl;
   int     nknots; 
   vector<double>  vr;
+  // Per-knot optional bounds mirrored from Potential (in Bohr).
+  // has_up[j]/has_low[j]==false means no bound on knot j.
+  vector<double>  vr_up;
+  vector<double>  vr_low;
+  vector<bool>    has_up;
+  vector<bool>    has_low;
   vector<sdivision> division; 
   double  minr,minRbond,max_step,expA,expB,expC;
   int     smooth_order;

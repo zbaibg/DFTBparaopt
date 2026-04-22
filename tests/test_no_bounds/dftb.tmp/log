@@ -1,0 +1,111 @@
+|===============================================================================
+|
+|  DFTB+ development version (commit: a23bfb2)
+|
+|  Copyright (C) 2006 - 2025  DFTB+ developers group
+|
+|===============================================================================
+|
+|  When publishing results obtained with DFTB+, please cite the following
+|  reference:
+|
+|    Recent Developments in DFTB+, a Software Package for Efficient Atomistic
+|    Quantum Mechanical Simulations, J. Phys. Chem. A 129, 5373−5390 (2025).
+|    [https://doi.org/10.1021/acs.jpca.5c01146]
+|
+|  You should also cite additional publications crediting the parametrization
+|  data you use. Please consult the documentation of the SK-files for the
+|  references.
+|
+|===============================================================================
+
+Reading input file 'dftb_in.hsd'
+Parser version: 14
+
+--------------------------------------------------------------------------------
+***  Converting input from parser version  6 to parser version 14 ...
+WARNING!
+-> Keyword renamed to 'Solver'.
+Path: dftbplusinput/Hamiltonian/DFTB/Eigensolver
+Line: 5-5 (File: dftb_in.hsd)
+
+WARNING!
+-> Keyword renamed to 'PrintForces'.
+Path: dftbplusinput/Analysis/CalculateForces
+Line: 27-27 (File: dftb_in.hsd)
+
+***  Done.
+
+Reading SK-files:
+./../eskf/C-C.skf
+./../eskf/C-H.skf
+./../eskf/H-H.skf
+Done.
+WARNING!
+-> The following 2 node(s) have been ignored by the parser:
+(1)
+Path: dftbplusinput/Hamiltonian/DFTB/MaxAngularMomentum/N
+Line: 12-12 (File: dftb_in.hsd)
+(2)
+Path: dftbplusinput/Hamiltonian/DFTB/MaxAngularMomentum/O
+Line: 13-13 (File: dftb_in.hsd)
+
+
+
+Processed input in HSD format written to 'dftb_pin.hsd'
+
+Starting initialization...
+--------------------------------------------------------------------------------
+OpenMP threads:              1
+Chosen random seed:          992104818
+Current stacksize:           unlimited
+Mode:                        Static calculation
+Self consistent charges:     Yes
+SCC-tolerance:                 0.100000E-08
+Max. scc iterations:                    100
+Shell resolved Hubbard:      No
+Spin polarisation:           No
+Nr. of up electrons:             5.000000
+Nr. of down electrons:           5.000000
+Periodic boundaries:         No
+Electronic solver:           Relatively robust
+Mixer:                       Broyden mixer
+Mixing parameter:                  0.200000
+Nr. of chrg. vec. in memory:            100
+Max. SCC-cycles:                        100
+Electronic temperature:              0.100000E-07 H      0.272114E-06 eV
+Initial charges:             Set automatically (system chrg:   0.000E+00)
+Included shells:             C:  s, p
+                             H:  s
+Extra options:
+                             Mulliken analysis
+                             Force calculation
+Force type                   original
+
+--------------------------------------------------------------------------------
+
+***  Geometry step: 0
+
+ iSCC Total electronic   Diff electronic      SCC error    
+    1   -0.44457450E+01    0.00000000E+00    0.22065934E+00
+    2   -0.44464632E+01   -0.44457450E+01    0.16406278E+00
+    3   -0.44473559E+01   -0.71817305E-03    0.31879934E-03
+    4   -0.44473559E+01   -0.89270519E-03    0.44392469E-06
+>> Charges saved for restart in charges.bin
+    5   -0.44473559E+01   -0.33927794E-08    0.11182166E-11
+
+Total Energy:                       -4.4473559101 H         -121.0187 eV
+Extrapolated to 0K:                 -4.4473559101 H         -121.0187 eV
+Total Mermin free energy:           -4.4473559101 H         -121.0187 eV
+Force related energy:               -4.4473559101 H         -121.0187 eV
+
+
+--------------------------------------------------------------------------------
+DFTB+ running times                          cpu [s]             wall clock [s]
+--------------------------------------------------------------------------------
+SCC                                    +       0.00 ( 71.4%)       0.16 ( 93.5%)
+Post-geometry optimisation             +       0.00 (  2.0%)       0.01 (  6.5%)
+--------------------------------------------------------------------------------
+Missing                                +       0.00 ( 26.6%)       0.00 (  0.0%)
+Total                                  =       0.00 (100.0%)       0.17 (100.0%)
+--------------------------------------------------------------------------------

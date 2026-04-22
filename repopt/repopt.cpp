@@ -37,6 +37,34 @@ double MyObjective(GAGenome&);
 void   MyInitializer(GAGenome&);
 int    MyMutator(GAGenome&,double);
 
+// Effective upper/lower bound on knot j of potential i.
+// Returns the intersection of the internally computed "base" bound
+// (already enforced by the unconstrained GA machinery) and the optional
+// user-supplied UP/LOW from the grid file, whichever is tighter. If no
+// user bound is declared for that knot the base bound is returned as-is,
+// so these helpers are a drop-in replacement for the original code in
+// the no-bounds case.
+//
+// These are used both in the per-knot GAMin/GAMax clamp AND as the cap
+// (forward push) / floor (reverse push) of the max_step push-apart
+// loops, so that any UP/LOW restriction is enforced by the same
+// push-apart machinery that already maintains ascending order and the
+// minimum knot spacing. This avoids a separate hard-clamp step that
+// could break the ascending order the push-apart had just established.
+static inline double eff_hi(int ipot, int j, double base){
+  if ( ipot < 0 || ipot >= (int)svpot.size() ) return base;
+  if ( j    < 0 || j    >= (int)svpot[ipot].has_up.size() ) return base;
+  if ( !svpot[ipot].has_up[j] ) return base;
+  return svpot[ipot].vr_up[j] < base ? svpot[ipot].vr_up[j] : base;
+}
+
+static inline double eff_lo(int ipot, int j, double base){
+  if ( ipot < 0 || ipot >= (int)svpot.size() ) return base;
+  if ( j    < 0 || j    >= (int)svpot[ipot].has_low.size() ) return base;
+  if ( !svpot[ipot].has_low[j] ) return base;
+  return svpot[ipot].vr_low[j] > base ? svpot[ipot].vr_low[j] : base;
+}
+
 string  inputfilename;  
 fstream infile, outfile;
 
@@ -72,6 +100,21 @@ int main(int argc, char** argv){
       length+=allequations.vpot[i].nknots;
       for(j=0;j<allequations.vpot[i].nknots;j++){ 
         svpot[i].vr.push_back(allequations.vpot[i].vr[j]);
+      }
+      // Mirror the optional per-knot UP/LOW bounds. For autogrid (or any
+      // case where bounds were not parsed) the source vectors are empty
+      // and we fall back to "no bound" for every knot.
+      svpot[i].vr_up.resize(svpot[i].nknots, 0.0);
+      svpot[i].vr_low.resize(svpot[i].nknots, 0.0);
+      svpot[i].has_up.resize(svpot[i].nknots, false);
+      svpot[i].has_low.resize(svpot[i].nknots, false);
+      for(j=0; j<(int)allequations.vpot[i].has_up.size() && j<svpot[i].nknots; j++){
+        svpot[i].has_up[j] = allequations.vpot[i].has_up[j];
+        svpot[i].vr_up[j]  = allequations.vpot[i].vr_up[j];
+      }
+      for(j=0; j<(int)allequations.vpot[i].has_low.size() && j<svpot[i].nknots; j++){
+        svpot[i].has_low[j] = allequations.vpot[i].has_low[j];
+        svpot[i].vr_low[j]  = allequations.vpot[i].vr_low[j];
       }
     }
     if(ddh.td3) length+=ddh.d3.size(); 
@@ -184,6 +227,12 @@ int main(int argc, char** argv){
         idx++;
       }
     }
+    // Run MyObjective once so the best-genome knots are put through the
+    // full clamp+UP/LOW+spacing pipeline before the grid files are
+    // (optionally) written out. This guarantees the written grid respects
+    // UP/LOW and still satisfies the ascending order / max_step gap.
+    endgen=true;
+    MyObjective(genome);
     if(grid_update){
       for(i=0;i<allequations.vpot.size();i++){ 
         outfile.open(allequations.vpot[i].gridname.c_str(),ios::out);
@@ -198,8 +247,6 @@ int main(int argc, char** argv){
         }
       }
     }
-    endgen=true;
-    MyObjective(genome); 
   }
 
   allequations.reset();
@@ -271,8 +318,11 @@ double MyObjective(GAGenome& g) {
 
   for(i=0;i<allequations.vpot.size();i++){ 
     nknots=allequations.vpot[i].nknots;
-    allequations.vpot[i].vr[0] = GAMin(svpot[i].minRbond, allequations.vpot[i].vr[0]);
-    allequations.vpot[i].vr[0] = GAMax(svpot[i].minr, allequations.vpot[i].vr[0]);
+    // Per-knot effective upper/lower range: the unconstrained base limit
+    // intersected with any user UP/LOW. Written inline via eff_hi/eff_lo.
+    // For grids without UP/LOW these reduce to the original base limits.
+    allequations.vpot[i].vr[0] = GAMin(eff_hi(i, 0, svpot[i].minRbond), allequations.vpot[i].vr[0]);
+    allequations.vpot[i].vr[0] = GAMax(eff_lo(i, 0, svpot[i].minr),     allequations.vpot[i].vr[0]);
 
   //for(j=1;j<nknots-1;j++){ 
   //  allequations.vpot[i].vr[j] = GAMin(svpot[i].vr[nknots-1]-svpot[i].max_step, allequations.vpot[i].vr[j]);
@@ -280,36 +330,48 @@ double MyObjective(GAGenome& g) {
   //}
 
     for(j=1;j<nknots-1;j++){ 
-      allequations.vpot[i].vr[j] = GAMin(svpot[i].vr[nknots-1]-svpot[i].max_step, allequations.vpot[i].vr[j]);
+      allequations.vpot[i].vr[j] = GAMin(eff_hi(i, j, svpot[i].vr[nknots-1]-svpot[i].max_step), allequations.vpot[i].vr[j]);
     //allequations.vpot[i].vr[j] = GAMax(svpot[i].minRbond+svpot[i].max_step, allequations.vpot[i].vr[j]);
-      allequations.vpot[i].vr[j] = GAMax(svpot[i].minRbond+min_step01, allequations.vpot[i].vr[j]);
+      allequations.vpot[i].vr[j] = GAMax(eff_lo(i, j, svpot[i].minRbond+min_step01),           allequations.vpot[i].vr[j]);
     }
   
+    // Forward push-apart: now directional (vr[k] < vr[j]+max_step) so it
+    // also heals any ascending-order inversion introduced by a user LOW
+    // that lifted knot j past knot k. Capped at knot k's effective upper
+    // bound so the push never leaves knot k above its UP.
     for(j=1;j<nknots-1;j++){ 
       for(k=j+1;k<nknots-1;k++){
-        if(abs(allequations.vpot[i].vr[k]-allequations.vpot[i].vr[j])<svpot[i].max_step){
-          allequations.vpot[i].vr[k]=GAMin(allequations.vpot[i].vr[j]+svpot[i].max_step,svpot[i].vr[nknots-1]-svpot[i].max_step);
+        if(allequations.vpot[i].vr[k] < allequations.vpot[i].vr[j]+svpot[i].max_step){
+          allequations.vpot[i].vr[k] = GAMin(
+              allequations.vpot[i].vr[j]+svpot[i].max_step,
+              eff_hi(i, k, svpot[i].vr[nknots-1]-svpot[i].max_step));
         }
       }
     }
+    // Reverse push-apart: directional, floored at knot k's effective LOW.
     for(j=nknots-1;j>0;j--){
       for(k=j-1;k>=0;k--){
-        if(abs(allequations.vpot[i].vr[k]-allequations.vpot[i].vr[j])<svpot[i].max_step){
-          allequations.vpot[i].vr[k]=allequations.vpot[i].vr[j]-svpot[i].max_step;
+        if(allequations.vpot[i].vr[k] > allequations.vpot[i].vr[j]-svpot[i].max_step){
+          double base_lo = (k==0) ? svpot[i].minr : svpot[i].minRbond+min_step01;
+          allequations.vpot[i].vr[k] = GAMax(
+              allequations.vpot[i].vr[j]-svpot[i].max_step,
+              eff_lo(i, k, base_lo));
         }
       }
     }
 
     for(j=1;j<nknots-1;j++){ 
-      allequations.vpot[i].vr[j] = GAMin(svpot[i].vr[nknots-1]-svpot[i].max_step, allequations.vpot[i].vr[j]);
+      allequations.vpot[i].vr[j] = GAMin(eff_hi(i, j, svpot[i].vr[nknots-1]-svpot[i].max_step), allequations.vpot[i].vr[j]);
     //allequations.vpot[i].vr[j] = GAMax(svpot[i].minRbond+svpot[i].max_step, allequations.vpot[i].vr[j]);
-      allequations.vpot[i].vr[j] = GAMax(svpot[i].minRbond+min_step01, allequations.vpot[i].vr[j]);
+      allequations.vpot[i].vr[j] = GAMax(eff_lo(i, j, svpot[i].minRbond+min_step01),           allequations.vpot[i].vr[j]);
     }
   
     for(j=1;j<nknots-1;j++){ 
       for(k=j+1;k<nknots-1;k++){
-        if(abs(allequations.vpot[i].vr[k]-allequations.vpot[i].vr[j])<svpot[i].max_step){
-          allequations.vpot[i].vr[k]=GAMin(allequations.vpot[i].vr[j]+svpot[i].max_step,svpot[i].vr[nknots-1]-svpot[i].max_step);
+        if(allequations.vpot[i].vr[k] < allequations.vpot[i].vr[j]+svpot[i].max_step){
+          allequations.vpot[i].vr[k] = GAMin(
+              allequations.vpot[i].vr[j]+svpot[i].max_step,
+              eff_hi(i, k, svpot[i].vr[nknots-1]-svpot[i].max_step));
         }
       }
     }
@@ -497,17 +559,26 @@ void MyInitializer(GAGenome& g) {
     idx=0;
     for(i=0;i<allequations.vpot.size();i++){ 
       nknots=svpot[i].nknots;
-      allequations.vpot[i].vr[0]=GARandomFloat(svpot[i].minr,svpot[i].minRbond);
+      // Per-knot effective sampling range for knot 0, intersected with
+      // any user-supplied UP/LOW bound so the draw is valid from the start.
+      double lo0 = eff_lo(i, 0, svpot[i].minr);
+      double hi0 = eff_hi(i, 0, svpot[i].minRbond);
+      if (hi0 < lo0) hi0 = lo0;
+      allequations.vpot[i].vr[0]=GARandomFloat(lo0,hi0);
       allequations.vpot[i].vr[nknots-1]=svpot[i].vr[nknots-1];
       for(j=1;j<nknots-1;j++){
         allequations.vpot[i].vr[j]=0.0;
       }
       for(j=1;j<nknots-1;j++){ 
+        // Per-knot effective sampling range for inner knot j.
+        double loj = eff_lo(i, j, svpot[i].minRbond+svpot[i].max_step);
+        double hij = eff_hi(i, j, svpot[i].vr[nknots-1]-svpot[i].max_step);
+        if (hij < loj) hij = loj;
         accept=false;
         ntrial=0;
         while((!accept) && (ntrial<10000)){
           accept=true;
-          tmp=GARandomFloat(svpot[i].minRbond+svpot[i].max_step,svpot[i].vr[nknots-1]-svpot[i].max_step);
+          tmp=GARandomFloat(loj,hij);
           for(k=1;k<nknots;k++){
             if(abs(allequations.vpot[i].vr[k]-tmp)<svpot[i].max_step){
               accept=false;

@@ -74,6 +74,14 @@ public:
   int             ordspl;
   int             nknots;     // number of knots, cutoff included
   vector<double>  vr;
+  // Per-knot optional bounds (read from grid file via "UP <val>" and/or
+  // "LOW <val>" tokens written after a knot value). Values are stored in
+  // Bohr (consistent with vr). When has_up[j]/has_low[j] is false, no
+  // bound is enforced on knot j in the GA search.
+  vector<double>  vr_up;
+  vector<double>  vr_low;
+  vector<bool>    has_up;
+  vector<bool>    has_low;
   double          minRbond;
   vector<MolDist> vmoldist;
   double          expA,expB,expC;
@@ -106,12 +114,67 @@ public:
 
     if (gridname.substr(0,8)!="autogrid"){
       potfile.open(gridname.c_str());
-      for (nknots=0; potfile >> rvalue && potfile.good();nknots++ ){
-        // besser mit push_back arbeiten!
-        vr.resize(nknots+1);
-        vr[nknots] = rvalue/AA_Bohr;
+      // Parse grid file line by line. Each line is:
+      //     <knot>  [UP <upper>]  [LOW <lower>]
+      // UP/LOW (case-insensitive) are optional and may appear in any order.
+      // They apply only to non-cutoff knots (see below): the last line is
+      // the cutoff distance and any UP/LOW tokens on it are ignored.
+      // When present on an inner knot, they bound that knot's position in
+      // the GA. If both are given and equal, that knot is effectively frozen.
+      nknots = 0;
+      vr.clear(); vr_up.clear(); vr_low.clear();
+      has_up.clear(); has_low.clear();
+      string line;
+      while ( getline(potfile, line) ){
+        // strip comments starting with '#'
+        size_t cpos = line.find('#');
+        if (cpos != string::npos) line = line.substr(0, cpos);
+        istringstream iss(line);
+        if ( !(iss >> rvalue) ) continue;  // skip blank lines
+        vr.push_back( rvalue/AA_Bohr );
+        double up_val  = 0.0,  low_val = 0.0;
+        bool   t_up = false, t_low = false;
+        string tok;
+        while ( iss >> tok ){
+          string ltok = tok;
+          for (size_t ii=0; ii<ltok.size(); ii++) ltok[ii] = toupper(ltok[ii]);
+          if ( ltok == "UP" ){
+            if ( iss >> up_val ) t_up = true;
+          } else if ( ltok == "LOW" ){
+            if ( iss >> low_val ) t_low = true;
+          }
+        }
+        vr_up.push_back(  up_val /AA_Bohr );
+        vr_low.push_back( low_val/AA_Bohr );
+        has_up.push_back(  t_up  );
+        has_low.push_back( t_low );
+        nknots++;
       }
       potfile.close();
+
+      // Cutoff is the last knot: do not constrain it in the GA.
+      if (nknots > 0) {
+        has_up[nknots-1]  = false;
+        has_low[nknots-1] = false;
+      }
+
+      // Require strictly ascending knots so that each knot's UP/LOW
+      // binding remains tied to the intended position. The GA's
+      // push-apart / sort stages can only keep the ordering intact if
+      // the initial layout is already sorted.
+      const double eps = 1e-9;
+      for (int ii = 1; ii < nknots; ii++){
+        if (vr[ii] < vr[ii-1] - eps){
+          cerr << endl << "ERROR:" << endl
+               << "  Knots in grid file \"" << gridname
+               << "\" must be in strictly ascending order." << endl
+               << "  Knot " << ii << " = " << vr[ii]*AA_Bohr
+               << " A follows knot " << ii-1 << " = "
+               << vr[ii-1]*AA_Bohr << " A." << endl
+               << "exit repopt" << endl << endl;
+          exit(1);
+        }
+      }
     }
    
     if (tsmooth!="no" && neighsmooth > nknots-1){
@@ -350,6 +413,7 @@ private:
   void   get_autogrids();
   void   sizeeqsys();
   void   get_minRbond();
+  void   validate_grid_knot_spacing();
 
   int   include_splineeq(const int ieq_);
   int   include_energyeq(const int ieq_);
