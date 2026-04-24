@@ -6,8 +6,8 @@ LIBS= -lga #-lopenblas
 
 all: repopt
 
-repopt: repopt.o allequations.o molecule.o tools.o input.o output.o ga.o allequations.hpp auxiliary.hpp ga.hpp tools.hpp 
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o repopt repopt.o allequations.o molecule.o tools.o input.o output.o ga.o $(LDFLAGS) $(LIBS) 
+repopt: repopt.o allequations.o molecule.o tools.o input.o output.o ga.o dataset.o allequations.hpp auxiliary.hpp ga.hpp tools.hpp dataset.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o repopt repopt.o allequations.o molecule.o tools.o input.o output.o ga.o dataset.o $(LDFLAGS) $(LIBS) 
 
 repopt.o: repopt.cpp allequations.hpp auxiliary.hpp tools.hpp ga.hpp 
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c repopt.cpp  
@@ -15,10 +15,10 @@ repopt.o: repopt.cpp allequations.hpp auxiliary.hpp tools.hpp ga.hpp
 allequations.o: allequations.cpp allequations.hpp auxiliary.hpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c allequations.cpp  
 
-molecule.o: molecule.cpp allequations.hpp auxiliary.hpp
+molecule.o: molecule.cpp allequations.hpp auxiliary.hpp dataset.hpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c molecule.cpp  
 
-input.o: input.cpp allequations.hpp auxiliary.hpp
+input.o: input.cpp allequations.hpp auxiliary.hpp dataset.hpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c input.cpp  
 
 output.o: output.cpp allequations.hpp auxiliary.hpp
@@ -29,6 +29,9 @@ tools.o: tools.cpp allequations.hpp tools.hpp
 
 ga.o:  ga.cpp 
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c ga.cpp 
+
+dataset.o: dataset.cpp dataset.hpp allequations.hpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c dataset.cpp
 
 clean:
 	rm -rf repopt *.o *.log *.d
