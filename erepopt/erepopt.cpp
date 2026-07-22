@@ -16,6 +16,7 @@
 #include "tools.hpp"
 #include "ga.hpp"
 #include "ddh.hpp"
+#include "genes.hpp"
 #include "mpi.h"
 
 using namespace std;
@@ -26,6 +27,7 @@ void  MyInitializer(GAGenome&);
 int   MyMutator(GAGenome&, double);
 int   MyOnePointCrossover(const GAGenome&, const GAGenome&, GAGenome*, GAGenome*);
 int   MyTwoPointCrossover(const GAGenome&, const GAGenome&, GAGenome*, GAGenome*);
+int   MyUniformCrossover(const GAGenome&, const GAGenome&, GAGenome*, GAGenome*);
 
 vector<string> addHamiltonian;
 string popfinalfile="pop.final.dat";
@@ -38,6 +40,10 @@ int preserved_num=1, seed=0;
 double ga_pmut=0.2, ga_pcross=0.9;
 double gtol=0.000001;
 bool ga=false,readr=true,restart=false;
+bool use_uniform_crossover=false;
+// Slice crossover breakpoint stride. Default 3 restores legacy "3*RandomInt" alignment.
+// Set to 0 (or negative) for unaligned sites on [0, length].
+int crossover_align=3;
 bool runtest=false,skfclean=true;
 bool endgen=false,initialgen=true,firsteval=true;
 int idrefr=3;
@@ -65,23 +71,19 @@ int main(int argc, char** argv){
  }
   if(ga && !runtest){
     GARandomSeed(seed);
-    length=0;
-    for(i=0;i<erepobj.velem.size();i++){ 
-      length+=erepobj.velem[i].lmax+2;
+    length=genome_length(erepobj, ddh);
+    if(length==0){
+      cerr<<"ERROR: no free parameters in GA chromosome (genome length 0)"<<endl;
+      exit(1);
     }
-    if(ddh.td3) length+=ddh.d3.size(); 
-    if(ddh.tdamph) length+=1;
-    if(ddh.thubbardderivs) length+=ddh.hubbardderivs.size(); 
-    if(ddh.tdamphver2) length+=ddh.damphver2.size(); 
-    if(ddh.thubbards) length+=ddh.hubbards.size(); 
-    if(ddh.tvorbes) length+=ddh.vorbes.size(); 
 
     GA1DArrayGenome<double> genome(length, MyObjective);
     genome.initializer(::MyInitializer);
     genome.mutator(::MyMutator);
     genome.comparator(::MyComparator);
     MyGASimpleGA ga(genome);
-    ga.crossover(::MyTwoPointCrossover);
+    if(use_uniform_crossover) ga.crossover(::MyUniformCrossover);
+    else ga.crossover(::MyTwoPointCrossover);
   //ga.maximize();
     ga.minimize();
   //GANoScaling scale;
@@ -115,62 +117,7 @@ int main(int argc, char** argv){
     outfile.open(popinitialfile.c_str(), (STD_IOS_OUT | STD_IOS_TRUNC));
     for(i=0; i<ga.population().size(); i++){
       genome = ga.population().individual(i);
-      idx=0;
-      outfile<<std::fixed;
-      for(j=0;j<erepobj.velem.size();j++){
-        for(k=0;k<erepobj.velem[j].lmax+2.;k++){
-          outfile.precision(erepobj.velem[j].radius[k].precision);
-          outfile.width(5);
-          outfile << genome.gene(idx) << "\t";
-          idx++;  
-        }
-      }
-      if(ddh.td3){
-        for(j=0;j<ddh.d3.size();j++){ 
-          outfile.precision(ddh.d3[j].precision);
-          outfile.width(5);
-          outfile << genome.gene(idx) << "\t";
-          idx++;
-        }
-      }
-      if(ddh.tdamph){
-        outfile.precision(ddh.damph.precision);
-        outfile.width(5);
-        outfile << genome.gene(idx) << "\t";
-        idx++;
-      }
-      if(ddh.thubbardderivs){
-        for(j=0;j<ddh.hubbardderivs.size();j++){ 
-          outfile.precision(ddh.hubbardderivs[j].precision);
-          outfile.width(5);
-          outfile << genome.gene(idx) << "\t";
-          idx++;
-        }
-      }
-      if(ddh.tdamphver2){
-        for(j=0;j<ddh.damphver2.size();j++){ 
-          outfile.precision(ddh.damphver2[j].precision);
-          outfile.width(5);
-          outfile << genome.gene(idx) << "\t";
-          idx++;
-        }
-      }
-      if(ddh.thubbards){
-        for(j=0;j<ddh.hubbards.size();j++){ 
-          outfile.precision(ddh.hubbards[j].precision);
-          outfile.width(5);
-          outfile << genome.gene(idx) << "\t";
-          idx++;
-        }
-      }
-      if(ddh.tvorbes){
-        for(j=0;j<ddh.vorbes.size();j++){ 
-          outfile.precision(ddh.vorbes[j].precision);
-          outfile.width(5);
-          outfile << genome.gene(idx) << "\t";
-          idx++;
-        }
-      }
+      write_free_genes(outfile, genome, erepobj, ddh);
       outfile.precision(9);
       outfile.width(20);
       outfile << genome.score() << "\n";
@@ -195,69 +142,10 @@ int main(int argc, char** argv){
       outfile.open(popfinalfile.c_str(), (STD_IOS_OUT | STD_IOS_TRUNC));
       for(i=0; i<ga.population().size(); i++){
         genome = ga.population().individual(i);
-        idx=0;
-        outfile<<std::fixed;
-        for(j=0;j<erepobj.velem.size();j++){
-          for(k=0;k<erepobj.velem[j].lmax+2.;k++){
-            outfile.precision(erepobj.velem[j].radius[k].precision);
-            outfile.width(5);
-            outfile << genome.gene(idx) << "\t";
-            idx++;  
-          }
-        }
-        if(ddh.td3){
-          for(j=0;j<ddh.d3.size();j++){ 
-            outfile.precision(ddh.d3[j].precision);
-            outfile.width(5);
-            outfile << genome.gene(idx) << "\t";
-            idx++;
-          }
-        }
-        if(ddh.tdamph){
-          outfile.precision(ddh.damph.precision);
-          outfile.width(5);
-          outfile << genome.gene(idx) << "\t";
-          idx++;
-        }
-        if(ddh.thubbardderivs){
-          for(j=0;j<ddh.hubbardderivs.size();j++){ 
-            outfile.precision(ddh.hubbardderivs[j].precision);
-            outfile.width(5);
-            outfile << genome.gene(idx) << "\t";
-            idx++;
-          }
-        }
-        if(ddh.tdamphver2){
-          for(j=0;j<ddh.damphver2.size();j++){ 
-            outfile.precision(ddh.damphver2[j].precision);
-            outfile.width(5);
-            outfile << genome.gene(idx) << "\t";
-            idx++;
-          }
-        }
-        if(ddh.thubbards){
-          for(j=0;j<ddh.hubbards.size();j++){ 
-            outfile.precision(ddh.hubbards[j].precision);
-            outfile.width(5);
-            outfile << genome.gene(idx) << "\t";
-            idx++;
-          }
-        }
-        if(ddh.tvorbes){
-          for(j=0;j<ddh.vorbes.size();j++){ 
-            outfile.precision(ddh.vorbes[j].precision);
-            outfile.width(5);
-            outfile << genome.gene(idx) << "\t";
-            idx++;
-          }
-        }
+        write_free_genes(outfile, genome, erepobj, ddh);
         outfile.precision(9);
         outfile.width(20);
         outfile << genome.score() << "\n";
-//      for(j=0;j<genome.length();j++) {
-//        outfile << genome.gene(j) << "\t";
-//      }
-//      outfile << genome.score() << "\n";
       }
       outfile.close();
       if(skfclean){
@@ -272,47 +160,7 @@ int main(int argc, char** argv){
     genome = ga.population().best();
     endgen=true;
     erepobj.get_residual(genome); 
-    idx=0;
-    for(j=0;j<erepobj.velem.size();j++){
-      for(k=0;k<erepobj.velem[j].lmax+2.;k++){
-         erepobj.velem[j].radius[k].r=genome.gene(idx);
-        idx++;  
-      }
-    }
-    if(ddh.td3){
-      for(j=0;j<ddh.d3.size();j++){ 
-        ddh.d3[j].value=genome.gene(idx);
-        idx++;
-      }
-    }
-    if(ddh.tdamph){
-      ddh.damph.value=genome.gene(idx);
-      idx++;
-    }
-    if(ddh.thubbardderivs){
-      for(j=0;j<ddh.hubbardderivs.size();j++){ 
-         ddh.hubbardderivs[j].value=genome.gene(idx);
-        idx++;
-      }
-    }
-    if(ddh.tdamphver2){
-      for(j=0;j<ddh.damphver2.size();j++){ 
-         ddh.damphver2[j].value=genome.gene(idx);
-        idx++;
-      }
-    }
-    if(ddh.thubbards){
-      for(j=0;j<ddh.hubbards.size();j++){ 
-         ddh.hubbards[j].value=genome.gene(idx);
-        idx++;
-      }
-    }
-    if(ddh.tvorbes){
-      for(j=0;j<ddh.vorbes.size();j++){ 
-         ddh.vorbes[j].value=genome.gene(idx);
-        idx++;
-      }
-    }
+    apply_genome_to_params(genome, erepobj, ddh);
    }
   }
 
@@ -330,110 +178,13 @@ int main(int argc, char** argv){
 
 double MyObjective(GAGenome& g) {
   GA1DArrayGenome<double>& genome = (GA1DArrayGenome<double>&)g;
-  int ie1,ie2,i,j,k,idx,nvars;
-  double value,tscore,tmp,tmps,tmpp;
+  int ie1,ie2,i,j,k;
+  double tscore;
   int id=0;
   char ctline[512];
 
-  idx=0;
-  for(i=0;i<erepobj.velem.size();i++){ 
-    nvars=erepobj.velem[i].lmax+2;
-    for(j=0; j<nvars; j++){
-      value  = genome.gene(idx);
-      value  = GAMax(erepobj.velem[i].radius[j].minr, value);
-      value  = GAMin(erepobj.velem[i].radius[j].maxr, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.td3){
-    for(i=0;i<ddh.d3.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.d3[i].min, value);
-      value  = GAMin(ddh.d3[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.tdamph){
-    value  = genome.gene(idx);
-    value  = GAMax(ddh.damph.min, value);
-    value  = GAMin(ddh.damph.max, value);
-    genome.gene(idx,value);
-    idx++;
-  }
-  if(ddh.thubbardderivs){
-    for(i=0;i<ddh.hubbardderivs.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.hubbardderivs[i].min, value);
-      value  = GAMin(ddh.hubbardderivs[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.tdamphver2){
-    for(i=0;i<ddh.damphver2.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.damphver2[i].min, value);
-      value  = GAMin(ddh.damphver2[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.thubbards){
-    for(i=0;i<ddh.hubbards.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.hubbards[i].min, value);
-      value  = GAMin(ddh.hubbards[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.tvorbes){
-    for(i=0;i<ddh.vorbes.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.vorbes[i].min, value);
-      value  = GAMin(ddh.vorbes[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-
-
-
-  //ie1=-1;
-  //for(i=0;i<erepobj.velem.size();i++){
-  //  ie1=ie1+2;  
-  //  tmps=genome.gene(ie1);
-  //  tmpp=genome.gene(ie1+1);
-  //  if(erepobj.velem[i].optype==2){
-  //    genome.gene(ie1+1,tmps);
-  //  }else if(erepobj.velem[i].optype==3){
-  //    genome.gene(ie1+1,tmps);
-  //    genome.gene(ie1+2,tmps);
-  //  }else if(erepobj.velem[i].optype==12){
-  //    genome.gene(ie1,GAMin(tmps, tmpp));
-  //    genome.gene(ie1+1,GAMax(tmps, tmpp));
-  //  }else if(erepobj.velem[i].optype==14){
-  //    genome.gene(ie1,GAMin(tmps, tmpp));
-  //    genome.gene(ie1+1,GAMax(tmps, tmpp));
-  //    if(genome.gene(ie1+1)-genome.gene(ie1)<0.4) genome.gene(ie1,genome.gene(ie1+1)-0.4); 
-  //  }else if(erepobj.velem[i].optype==21){
-  //    genome.gene(ie1,GAMax(tmps, tmpp));
-  //    genome.gene(ie1+1,GAMin(tmps, tmpp));
-  //  }else if(erepobj.velem[i].optype==11){
-  //    genome.gene(ie1-1,tmps);
-  //  }else if(erepobj.velem[i].optype==115){
-  //    genome.gene(ie1-1,1.5*tmps);
-  //  }else if(erepobj.velem[i].optype==111){
-  //    genome.gene(ie1-1,tmps);
-  //    genome.gene(ie1+1,tmps);
-  //  }else if(erepobj.velem[i].optype==1115){
-  //    genome.gene(ie1-1,1.5*tmps);
-  //    genome.gene(ie1+1,tmps);
-  //  }
-  //  ie1=ie1+erepobj.velem[i].lmax; 
-  //}
+  clamp_free_genome(g, erepobj, ddh);
+  apply_genome_to_params(genome, erepobj, ddh);
 
   if(!initialgen){
     ostringstream ss;
@@ -442,63 +193,32 @@ double MyObjective(GAGenome& g) {
     string skf_dir=scratch+"/slakos.tmp_"+itoa(id,10);
 
     call="rm -rf "+skf_dir+"; mkdir -p "+skf_dir+"; ";
-//  call=" mkdir -p "+skf_dir+"; ";
-     
-    idx=0; 
-    for(i=0;i<erepobj.velem.size();i++) idx=idx+erepobj.velem[i].lmax+2;
-    if(ddh.td3) idx=idx+ddh.d3.size();
-    if(ddh.tdamph) idx++;
-    if(ddh.thubbardderivs) idx=idx+ddh.hubbardderivs.size();
-    if(ddh.tdamphver2) idx=idx+ddh.damphver2.size();
 
-    part3="";
-    if(ddh.thubbards){
-      part3+="_hub";
-      for(i=0;i<ddh.hubbards.size();i++){ 
-        ss.str(std::string());
-        ss.precision(ddh.hubbards[i].precision); 
-        ss<<std::fixed<<genome.gene(idx);
-        part3+="_"+ddh.hubbards[i].name+ss.str();
-        idx++;
-      }
-    }
-    if(ddh.tvorbes){
-      part3+="_vor";
-      for(i=0;i<ddh.vorbes.size();i++){ 
-        ss.str(std::string());
-        ss.precision(ddh.vorbes[i].precision); 
-        ss<<std::fixed<<genome.gene(idx);
-        part3+="_"+ddh.vorbes[i].name+ss.str();
-        idx++;
-      }
-    }
-
-    ie1=0;
     for(i=0;i<erepobj.velem.size();i++){
       part1=erepobj.velem[i].name;  
       ss.str(std::string());
-      ss.precision(erepobj.velem[i].radius[0].precision); ss<<std::fixed<<genome.gene(ie1);
+      ss.precision(erepobj.velem[i].radius[0].precision);
+      ss<<std::fixed<<erepobj.velem[i].radius[0].r;
       part1+="_d"+ss.str();
-      ie1++;  
       for(k=1;k<erepobj.velem[i].lmax+2.;k++){
         ss.str(std::string());
-        ss.precision(erepobj.velem[i].radius[k].precision); ss<<std::fixed<<genome.gene(ie1);
+        ss.precision(erepobj.velem[i].radius[k].precision);
+        ss<<std::fixed<<erepobj.velem[i].radius[k].r;
         part1+="_w"+ss.str();  
-        ie1++; 
       }
-      ie2=0;
       for(j=0;j<erepobj.velem.size();j++){
         part2=erepobj.velem[j].name;  
         ss.str(std::string());
-        ss.precision(erepobj.velem[j].radius[0].precision); ss<<std::fixed<<genome.gene(ie2);
+        ss.precision(erepobj.velem[j].radius[0].precision);
+        ss<<std::fixed<<erepobj.velem[j].radius[0].r;
         part2+="_d"+ss.str();  
-        ie2++;
         for(k=1;k<erepobj.velem[j].lmax+2.;k++){
           ss.str(std::string());
-          ss.precision(erepobj.velem[j].radius[k].precision); ss<<std::fixed<<genome.gene(ie2);
+          ss.precision(erepobj.velem[j].radius[k].precision);
+          ss<<std::fixed<<erepobj.velem[j].radius[k].r;
           part2+="_w"+ss.str();  
-          ie2++;
         }
+        part3=pair_onsite_suffix(ddh, erepobj.velem[i].name, erepobj.velem[j].name);
         if(erepobj.lc){
           ss.str(std::string());
           ss.precision(2);ss<<std::fixed<<erepobj.omega;
@@ -506,10 +226,6 @@ double MyObjective(GAGenome& g) {
         }else{
           stemp=part1+"-"+part2+part3+".skf";
         }
-        // If an additional skf for this pair exists in libadddir, skip
-        // checking the parameterized skf in libdir to keep behavior
-        // consistent with makeskf. The actual copy from libadddir will
-        // be done later by the bulk "cp libadddir/*.skf" command.
         if(erepobj.addskf){
           string addpair = erepobj.libadddir+"/"+erepobj.velem[i].name+"-"+erepobj.velem[j].name+".skf";
           if(!access(addpair.c_str(), F_OK)){
@@ -539,35 +255,30 @@ double MyObjective(GAGenome& g) {
       }
       toutfile<<std::fixed;
       if( ddh.td3 || ddh.tdamph || ddh.thubbardderivs || ddh.tdamphver2){
-        idx=ie2; 
         if(ddh.td3){
           toutfile<<"\n$d3:\n"; 
           for(i=0;i<ddh.d3.size();i++){ 
-            toutfile<<ddh.d3[i].name<<" "<<genome.gene(idx)<<" "<<genome.gene(idx)<<" "<<genome.gene(idx)<<" "<<ddh.d3[i].precision<<endl;
-            idx++;
+            toutfile<<ddh.d3[i].name<<" "<<ddh.d3[i].value<<" "<<ddh.d3[i].value<<" "<<ddh.d3[i].value<<" "<<ddh.d3[i].precision<<endl;
           }
           toutfile<<"$end\n"; 
         }
         if(ddh.tdamph){
           toutfile<<"\n$damph:\n"; 
-          toutfile<<genome.gene(idx)<<" "<<genome.gene(idx)<<" "<<genome.gene(idx)<<" "<<ddh.damph.precision<<endl;
-          idx++;
+          toutfile<<ddh.damph.value<<" "<<ddh.damph.value<<" "<<ddh.damph.value<<" "<<ddh.damph.precision<<endl;
           toutfile<<"$end\n"; 
         }
         if(ddh.thubbardderivs){
           if(ddh.thirdorderfull) toutfile<<"\n$hubbardderivsfull:\n"; 
           else toutfile<<"\n$hubbardderivs:\n"; 
           for(i=0;i<ddh.hubbardderivs.size();i++){ 
-            toutfile<<ddh.hubbardderivs[i].name<<" "<<genome.gene(idx)<<" "<<genome.gene(idx)<<" "<<genome.gene(idx)<<" "<<ddh.hubbardderivs[i].precision<<endl;
-            idx++;
+            toutfile<<ddh.hubbardderivs[i].name<<" "<<ddh.hubbardderivs[i].value<<" "<<ddh.hubbardderivs[i].value<<" "<<ddh.hubbardderivs[i].value<<" "<<ddh.hubbardderivs[i].precision<<endl;
           }
           toutfile<<"$end\n"; 
         }
         if(ddh.tdamphver2){
           toutfile<<"\n$damphver2:\n"; 
           for(i=0;i<ddh.damphver2.size();i++){ 
-            toutfile<<ddh.damphver2[i].name<<" "<<genome.gene(idx)<<" "<<genome.gene(idx)<<" "<<genome.gene(idx)<<" "<<ddh.damphver2[i].precision<<endl;
-            idx++;
+            toutfile<<ddh.damphver2[i].name<<" "<<ddh.damphver2[i].value<<" "<<ddh.damphver2[i].value<<" "<<ddh.damphver2[i].value<<" "<<ddh.damphver2[i].precision<<endl;
           }
           toutfile<<"$end\n"; 
         }
@@ -580,19 +291,10 @@ double MyObjective(GAGenome& g) {
     }
 
     tscore=erepobj.score(id); 
-   
-  //call="rm -rf "+skf_dir+";";
-  //i=system(call.c_str());	
 
     return tscore;
   }else{
-////////////Critical////////////////////////////////
-    //if(firsteval){
-    //  firsteval=false;
-    //  return 0.00000099;
-    //} 
     return 0.000001;
-////////////////////////////////////////////
   }
 }
 
@@ -620,50 +322,63 @@ double MyObjective(GAGenome& g) {
 
 void MyInitializer(GAGenome& g) {
   GA1DArrayGenome<double>& genome = (GA1DArrayGenome<double>&)g;
-  bool accept; 
-  int ie1,i,j,k,idx,nknots,npb,nvars;
-  double tmp,value;
+  int i,j,k,idx;
+  double tmp;
 
   if(readr==true){
     idx=0;
     for(i=0;i<erepobj.velem.size();i++){
       for(k=0;k<erepobj.velem[i].lmax+2.;k++){
-        genome.gene(idx,erepobj.velem[i].radius[k].r);
-        idx++;
+        if(gene_is_free(erepobj.velem[i].radius[k].minr, erepobj.velem[i].radius[k].maxr)){
+          genome.gene(idx,erepobj.velem[i].radius[k].r);
+          idx++;
+        }
       }
     }
     if(ddh.td3){
       for(i=0;i<ddh.d3.size();i++){ 
-        genome.gene(idx,ddh.d3[i].value);
-        idx++;
+        if(gene_is_free(ddh.d3[i].min, ddh.d3[i].max)){
+          genome.gene(idx,ddh.d3[i].value);
+          idx++;
+        }
       }
     }
     if(ddh.tdamph){
-      genome.gene(idx,ddh.damph.value);
-      idx++;
+      if(gene_is_free(ddh.damph.min, ddh.damph.max)){
+        genome.gene(idx,ddh.damph.value);
+        idx++;
+      }
     }
     if(ddh.thubbardderivs){
       for(i=0;i<ddh.hubbardderivs.size();i++){ 
-        genome.gene(idx,ddh.hubbardderivs[i].value);
-        idx++;
+        if(gene_is_free(ddh.hubbardderivs[i].min, ddh.hubbardderivs[i].max)){
+          genome.gene(idx,ddh.hubbardderivs[i].value);
+          idx++;
+        }
       }
     }
     if(ddh.tdamphver2){
       for(i=0;i<ddh.damphver2.size();i++){ 
-        genome.gene(idx,ddh.damphver2[i].value);
-        idx++;
+        if(gene_is_free(ddh.damphver2[i].min, ddh.damphver2[i].max)){
+          genome.gene(idx,ddh.damphver2[i].value);
+          idx++;
+        }
       }
     }
     if(ddh.thubbards){
       for(i=0;i<ddh.hubbards.size();i++){ 
-        genome.gene(idx,ddh.hubbards[i].value);
-        idx++;
+        if(gene_is_free(ddh.hubbards[i].min, ddh.hubbards[i].max)){
+          genome.gene(idx,ddh.hubbards[i].value);
+          idx++;
+        }
       }
     }
     if(ddh.tvorbes){
       for(i=0;i<ddh.vorbes.size();i++){ 
-        genome.gene(idx,ddh.vorbes[i].value);
-        idx++;
+        if(gene_is_free(ddh.vorbes[i].min, ddh.vorbes[i].max)){
+          genome.gene(idx,ddh.vorbes[i].value);
+          idx++;
+        }
       }
     }
     readr=false;
@@ -671,42 +386,56 @@ void MyInitializer(GAGenome& g) {
     idx=0;
     for(i=0;i<erepobj.velem.size();i++){
       for(k=0;k<erepobj.velem[i].lmax+2.;k++){
-        genome.gene(idx,GARandomFloat(erepobj.velem[i].radius[k].minr,erepobj.velem[i].radius[k].maxr));
-        idx++;
+        if(gene_is_free(erepobj.velem[i].radius[k].minr, erepobj.velem[i].radius[k].maxr)){
+          genome.gene(idx,GARandomFloat(erepobj.velem[i].radius[k].minr,erepobj.velem[i].radius[k].maxr));
+          idx++;
+        }
       }
     }
     if(ddh.td3){
       for(i=0;i<ddh.d3.size();i++){ 
-        genome.gene(idx,GARandomFloat(ddh.d3[i].min,ddh.d3[i].max));
-        idx++;
+        if(gene_is_free(ddh.d3[i].min, ddh.d3[i].max)){
+          genome.gene(idx,GARandomFloat(ddh.d3[i].min,ddh.d3[i].max));
+          idx++;
+        }
       }
     }
     if(ddh.tdamph){
-      genome.gene(idx,GARandomFloat(ddh.damph.min,ddh.damph.max));
-      idx++;
+      if(gene_is_free(ddh.damph.min, ddh.damph.max)){
+        genome.gene(idx,GARandomFloat(ddh.damph.min,ddh.damph.max));
+        idx++;
+      }
     }
     if(ddh.thubbardderivs){
       for(i=0;i<ddh.hubbardderivs.size();i++){ 
-        genome.gene(idx,GARandomFloat(ddh.hubbardderivs[i].min,ddh.hubbardderivs[i].max));
-        idx++;
+        if(gene_is_free(ddh.hubbardderivs[i].min, ddh.hubbardderivs[i].max)){
+          genome.gene(idx,GARandomFloat(ddh.hubbardderivs[i].min,ddh.hubbardderivs[i].max));
+          idx++;
+        }
       }
     }
     if(ddh.tdamphver2){
       for(i=0;i<ddh.damphver2.size();i++){ 
-        genome.gene(idx,GARandomFloat(ddh.damphver2[i].min,ddh.damphver2[i].max));
-        idx++;
+        if(gene_is_free(ddh.damphver2[i].min, ddh.damphver2[i].max)){
+          genome.gene(idx,GARandomFloat(ddh.damphver2[i].min,ddh.damphver2[i].max));
+          idx++;
+        }
       }
     }
     if(ddh.thubbards){
       for(i=0;i<ddh.hubbards.size();i++){ 
-        genome.gene(idx,GARandomFloat(ddh.hubbards[i].min,ddh.hubbards[i].max));
-        idx++;
+        if(gene_is_free(ddh.hubbards[i].min, ddh.hubbards[i].max)){
+          genome.gene(idx,GARandomFloat(ddh.hubbards[i].min,ddh.hubbards[i].max));
+          idx++;
+        }
       }
     }
     if(ddh.tvorbes){
       for(i=0;i<ddh.vorbes.size();i++){ 
-        genome.gene(idx,GARandomFloat(ddh.vorbes[i].min,ddh.vorbes[i].max));
-        idx++;
+        if(gene_is_free(ddh.vorbes[i].min, ddh.vorbes[i].max)){
+          genome.gene(idx,GARandomFloat(ddh.vorbes[i].min,ddh.vorbes[i].max));
+          idx++;
+        }
       }
     }
   }
@@ -715,68 +444,82 @@ void MyInitializer(GAGenome& g) {
     idx=0;
     for(i=0;i<erepobj.velem.size();i++){
       for(k=0;k<erepobj.velem[i].lmax+2.;k++){
-        tmp=999999999.9;
-        restartfile>>tmp;
-        if(tmp!=999999999.9){
-          genome.gene(idx,tmp);
+        if(gene_is_free(erepobj.velem[i].radius[k].minr, erepobj.velem[i].radius[k].maxr)){
+          tmp=999999999.9;
+          restartfile>>tmp;
+          if(tmp!=999999999.9){
+            genome.gene(idx,tmp);
+          }
           idx++;
         }
       }
     }
     if(ddh.td3){
       for(i=0;i<ddh.d3.size();i++){ 
-        tmp=999999999.9;
-        restartfile>>tmp;
-        if(tmp!=999999999.9){
-          genome.gene(idx,tmp);
+        if(gene_is_free(ddh.d3[i].min, ddh.d3[i].max)){
+          tmp=999999999.9;
+          restartfile>>tmp;
+          if(tmp!=999999999.9){
+            genome.gene(idx,tmp);
+          }
           idx++;
         }
       }
     }
     if(ddh.tdamph){
-      tmp=999999999.9;
-      restartfile>>tmp;
-      if(tmp!=999999999.9){
-        genome.gene(idx,tmp);
+      if(gene_is_free(ddh.damph.min, ddh.damph.max)){
+        tmp=999999999.9;
+        restartfile>>tmp;
+        if(tmp!=999999999.9){
+          genome.gene(idx,tmp);
+        }
         idx++;
       }
     }
     if(ddh.thubbardderivs){
       for(i=0;i<ddh.hubbardderivs.size();i++){ 
-        tmp=999999999.9;
-        restartfile>>tmp;
-        if(tmp!=999999999.9){
-          genome.gene(idx,tmp);
+        if(gene_is_free(ddh.hubbardderivs[i].min, ddh.hubbardderivs[i].max)){
+          tmp=999999999.9;
+          restartfile>>tmp;
+          if(tmp!=999999999.9){
+            genome.gene(idx,tmp);
+          }
           idx++;
         }
       }
     }
     if(ddh.tdamphver2){
       for(i=0;i<ddh.damphver2.size();i++){ 
-        tmp=999999999.9;
-        restartfile>>tmp;
-        if(tmp!=999999999.9){
-          genome.gene(idx,tmp);
+        if(gene_is_free(ddh.damphver2[i].min, ddh.damphver2[i].max)){
+          tmp=999999999.9;
+          restartfile>>tmp;
+          if(tmp!=999999999.9){
+            genome.gene(idx,tmp);
+          }
           idx++;
         }
       }
     }
     if(ddh.thubbards){
       for(i=0;i<ddh.hubbards.size();i++){ 
-        tmp=999999999.9;
-        restartfile>>tmp;
-        if(tmp!=999999999.9){
-          genome.gene(idx,tmp);
+        if(gene_is_free(ddh.hubbards[i].min, ddh.hubbards[i].max)){
+          tmp=999999999.9;
+          restartfile>>tmp;
+          if(tmp!=999999999.9){
+            genome.gene(idx,tmp);
+          }
           idx++;
         }
       }
     }
     if(ddh.tvorbes){
       for(i=0;i<ddh.vorbes.size();i++){ 
-        tmp=999999999.9;
-        restartfile>>tmp;
-        if(tmp!=999999999.9){
-          genome.gene(idx,tmp);
+        if(gene_is_free(ddh.vorbes[i].min, ddh.vorbes[i].max)){
+          tmp=999999999.9;
+          restartfile>>tmp;
+          if(tmp!=999999999.9){
+            genome.gene(idx,tmp);
+          }
           idx++;
         }
       }
@@ -784,87 +527,20 @@ void MyInitializer(GAGenome& g) {
     restartfile>>tmp;
   }
 
-
-  idx=0;
-  for(i=0;i<erepobj.velem.size();i++){ 
-    nvars=erepobj.velem[i].lmax+2;
-    for(j=0; j<nvars; j++){
-      value  = genome.gene(idx);
-      value  = GAMax(erepobj.velem[i].radius[j].minr, value);
-      value  = GAMin(erepobj.velem[i].radius[j].maxr, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.td3){
-    for(i=0;i<ddh.d3.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.d3[i].min, value);
-      value  = GAMin(ddh.d3[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.tdamph){
-    value  = genome.gene(idx);
-    value  = GAMax(ddh.damph.min, value);
-    value  = GAMin(ddh.damph.max, value);
-    genome.gene(idx,value);
-    idx++;
-  }
-  if(ddh.thubbardderivs){
-    for(i=0;i<ddh.hubbardderivs.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.hubbardderivs[i].min, value);
-      value  = GAMin(ddh.hubbardderivs[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.tdamphver2){
-    for(i=0;i<ddh.damphver2.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.damphver2[i].min, value);
-      value  = GAMin(ddh.damphver2[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.thubbards){
-    for(i=0;i<ddh.hubbards.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.hubbards[i].min, value);
-      value  = GAMin(ddh.hubbards[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-  if(ddh.tvorbes){
-    for(i=0;i<ddh.vorbes.size();i++){ 
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.vorbes[i].min, value);
-      value  = GAMin(ddh.vorbes[i].max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-  }
-
-
-  //erepobj.makeskf(genome);
+  clamp_free_genome(g, erepobj, ddh);
 }
 
 int MyMutator(GAGenome& g, double pmut){
   GA1DArrayGenome<double>& child = (GA1DArrayGenome<double>&)g;
-  int i,j,k,idx,nvars,iMut;
+  int i,j,k,idx,iMut;
   double value;
 
- // cout<<"in mutator start\n";
   if(pmut <= 0.0) return(0);
   idx=0;
   iMut=0;
   for(i=0;i<erepobj.velem.size();i++){ 
-    nvars=erepobj.velem[i].lmax+2;
-    for(j=0; j<nvars; j++){
+    for(j=0; j<erepobj.velem[i].lmax+2; j++){
+      if(!gene_is_free(erepobj.velem[i].radius[j].minr, erepobj.velem[i].radius[j].maxr)) continue;
       if(GAFlipCoin(pmut)){
         value  = GAGaussianFloat(erepobj.velem[i].radius[j].delta);
         value += child.gene(idx);
@@ -878,6 +554,7 @@ int MyMutator(GAGenome& g, double pmut){
   }
   if(ddh.td3){
     for(i=0;i<ddh.d3.size();i++){ 
+      if(!gene_is_free(ddh.d3[i].min, ddh.d3[i].max)) continue;
       if(GAFlipCoin(pmut)){
         value  = GAGaussianFloat(ddh.d3[i].delta);
         value += child.gene(idx);
@@ -890,18 +567,21 @@ int MyMutator(GAGenome& g, double pmut){
     }
   }
   if(ddh.tdamph){
-    if(GAFlipCoin(pmut)){
-      value  = GAGaussianFloat(ddh.damph.delta);
-      value += child.gene(idx);
-      value  = GAMax(ddh.damph.min, value);
-      value  = GAMin(ddh.damph.max, value);
-      child.gene(idx,value);
-      iMut++;
+    if(gene_is_free(ddh.damph.min, ddh.damph.max)){
+      if(GAFlipCoin(pmut)){
+        value  = GAGaussianFloat(ddh.damph.delta);
+        value += child.gene(idx);
+        value  = GAMax(ddh.damph.min, value);
+        value  = GAMin(ddh.damph.max, value);
+        child.gene(idx,value);
+        iMut++;
+      }
+      idx++;
     }
-    idx++;
   }
   if(ddh.thubbardderivs){
     for(i=0;i<ddh.hubbardderivs.size();i++){ 
+      if(!gene_is_free(ddh.hubbardderivs[i].min, ddh.hubbardderivs[i].max)) continue;
       if(GAFlipCoin(pmut)){
         value  = GAGaussianFloat(ddh.hubbardderivs[i].delta);
         value += child.gene(idx);
@@ -915,6 +595,7 @@ int MyMutator(GAGenome& g, double pmut){
   }
   if(ddh.tdamphver2){
     for(i=0;i<ddh.damphver2.size();i++){ 
+      if(!gene_is_free(ddh.damphver2[i].min, ddh.damphver2[i].max)) continue;
       if(GAFlipCoin(pmut)){
         value  = GAGaussianFloat(ddh.damphver2[i].delta);
         value += child.gene(idx);
@@ -928,6 +609,7 @@ int MyMutator(GAGenome& g, double pmut){
   }
   if(ddh.thubbards){
     for(i=0;i<ddh.hubbards.size();i++){ 
+      if(!gene_is_free(ddh.hubbards[i].min, ddh.hubbards[i].max)) continue;
       if(GAFlipCoin(pmut)){
         value  = GAGaussianFloat(ddh.hubbards[i].delta);
         value += child.gene(idx);
@@ -941,6 +623,7 @@ int MyMutator(GAGenome& g, double pmut){
   }
   if(ddh.tvorbes){
     for(i=0;i<ddh.vorbes.size();i++){ 
+      if(!gene_is_free(ddh.vorbes[i].min, ddh.vorbes[i].max)) continue;
       if(GAFlipCoin(pmut)){
         value  = GAGaussianFloat(ddh.vorbes[i].delta);
         value += child.gene(idx);
@@ -969,6 +652,20 @@ double MyComparator(const GAGenome& g1, const GAGenome& g2) {
 }
 
 
+// Pick a crossover breakpoint in [0, length], optionally snapped to multiples of crossover_align.
+static unsigned int aligned_crossover_site(unsigned int length){
+  if(length == 0) return 0;
+  if(crossover_align <= 0){
+    return (unsigned int)GARandomInt(0, (int)length);
+  }
+  unsigned int stride = (unsigned int)crossover_align;
+  unsigned int nblock = length / stride;
+  if(nblock == 0){
+    return (unsigned int)GARandomInt(0, (int)length);
+  }
+  return stride * (unsigned int)GARandomInt(0, (int)nblock);
+}
+
 int MyOnePointCrossover(const GAGenome& p1, const GAGenome& p2,
   GAGenome* c1, GAGenome* c2){
   const GA1DArrayGenome<double> &mom=DYN_CAST(const GA1DArrayGenome<double> &, p1);
@@ -990,15 +687,15 @@ int MyOnePointCrossover(const GAGenome& p1, const GAGenome& p2,
         GAErr(GA_LOC, mom.className(), "one-point cross", gaErrSameLengthReqd);
         return nc;
       }
-      momsite = dadsite = 3*GARandomInt(0, mom.length()/3);
+      momsite = dadsite = aligned_crossover_site(mom.length());
       momlen = dadlen = mom.length() - momsite;
     }else if(sis.resizeBehaviour() == GAGenome::FIXED_SIZE ||
     bro.resizeBehaviour() == GAGenome::FIXED_SIZE){
       GAErr(GA_LOC, mom.className(), "one-point cross", gaErrSameBehavReqd);
       return nc;
     }else{
-      momsite = 3*GARandomInt(0, mom.length()/3);
-      dadsite = 3*GARandomInt(0, dad.length()/3);
+      momsite = aligned_crossover_site(mom.length());
+      dadsite = aligned_crossover_site(dad.length());
       momlen = mom.length() - momsite;
       dadlen = dad.length() - dadsite;
       sis.resize(momsite+dadlen);
@@ -1020,11 +717,11 @@ int MyOnePointCrossover(const GAGenome& p1, const GAGenome& p2,
         GAErr(GA_LOC, mom.className(), "one-point cross", gaErrSameLengthReqd);
         return nc;
       }
-      momsite = dadsite = 3*GARandomInt(0, mom.length()/3);
+      momsite = dadsite = aligned_crossover_site(mom.length());
       momlen = dadlen = mom.length() - momsite;
     }else{
-      momsite = 3*GARandomInt(0, mom.length()/3);
-      dadsite = 3*GARandomInt(0, dad.length()/3);
+      momsite = aligned_crossover_site(mom.length());
+      dadsite = aligned_crossover_site(dad.length());
       momlen = mom.length() - momsite;
       dadlen = dad.length() - dadsite;
       sis.resize(momsite+dadlen);
@@ -1063,9 +760,8 @@ int MyTwoPointCrossover(const GAGenome& p1, const GAGenome& p2,
         GAErr(GA_LOC, mom.className(), "two-point cross", gaErrSameLengthReqd);
         return nc;
       }
-      momsite[0] = 3*GARandomInt(0, mom.length()/3);
-      momsite[1] = 3*GARandomInt(0, mom.length()/3);
-      //cout<<"mom.length()/3:   "<<mom.length()/3<<endl;
+      momsite[0] = aligned_crossover_site(mom.length());
+      momsite[1] = aligned_crossover_site(mom.length());
       if(momsite[0] > momsite[1]) SWAP(momsite[0], momsite[1]);
       momlen[0] = momsite[1] - momsite[0];
       momlen[1] = mom.length() - momsite[1];
@@ -1078,14 +774,14 @@ int MyTwoPointCrossover(const GAGenome& p1, const GAGenome& p2,
     bro.resizeBehaviour() == GAGenome::FIXED_SIZE){
       return nc;
     }else{
-      momsite[0] = 3*GARandomInt(0, mom.length()/3);
-      momsite[1] = 3*GARandomInt(0, mom.length()/3);
+      momsite[0] = aligned_crossover_site(mom.length());
+      momsite[1] = aligned_crossover_site(mom.length());
       if(momsite[0] > momsite[1]) SWAP(momsite[0], momsite[1]);
       momlen[0] = momsite[1] - momsite[0];
       momlen[1] = mom.length() - momsite[1];
 
-      dadsite[0] = 3*GARandomInt(0, dad.length()/3);
-      dadsite[1] = 3*GARandomInt(0, dad.length()/3);
+      dadsite[0] = aligned_crossover_site(dad.length());
+      dadsite[1] = aligned_crossover_site(dad.length());
       if(dadsite[0] > dadsite[1]) SWAP(dadsite[0], dadsite[1]);
       dadlen[0] = dadsite[1] - dadsite[0];
       dadlen[1] = dad.length() - dadsite[1];
@@ -1113,8 +809,8 @@ int MyTwoPointCrossover(const GAGenome& p1, const GAGenome& p2,
         GAErr(GA_LOC, mom.className(), "two-point cross", gaErrSameLengthReqd);
         return nc;
       }
-      momsite[0] = 3*GARandomInt(0, mom.length()/3);
-      momsite[1] = 3*GARandomInt(0, mom.length()/3);
+      momsite[0] = aligned_crossover_site(mom.length());
+      momsite[1] = aligned_crossover_site(mom.length());
       if(momsite[0] > momsite[1]) SWAP(momsite[0], momsite[1]);
       momlen[0] = momsite[1] - momsite[0];
       momlen[1] = mom.length() - momsite[1];
@@ -1124,14 +820,14 @@ int MyTwoPointCrossover(const GAGenome& p1, const GAGenome& p2,
       dadlen[0] = momlen[0];
       dadlen[1] = momlen[1];
     }else{
-      momsite[0] = 3*GARandomInt(0, mom.length()/3);
-      momsite[1] = 3*GARandomInt(0, mom.length()/3);
+      momsite[0] = aligned_crossover_site(mom.length());
+      momsite[1] = aligned_crossover_site(mom.length());
       if(momsite[0] > momsite[1]) SWAP(momsite[0], momsite[1]);
       momlen[0] = momsite[1] - momsite[0];
       momlen[1] = mom.length() - momsite[1];
 
-      dadsite[0] = 3*GARandomInt(0, dad.length()/3);
-      dadsite[1] = 3*GARandomInt(0, dad.length()/3);
+      dadsite[0] = aligned_crossover_site(dad.length());
+      dadsite[1] = aligned_crossover_site(dad.length());
       if(dadsite[0] > dadsite[1]) SWAP(dadsite[0], dadsite[1]);
       dadlen[0] = dadsite[1] - dadsite[0];
       dadlen[1] = dad.length() - dadsite[1];
@@ -1156,4 +852,51 @@ int MyTwoPointCrossover(const GAGenome& p1, const GAGenome& p2,
   return nc;
 }
 
+int MyUniformCrossover(const GAGenome& p1, const GAGenome& p2,
+  GAGenome* c1, GAGenome* c2){
+  const GA1DArrayGenome<double> &mom=DYN_CAST(const GA1DArrayGenome<double> &, p1);
+  const GA1DArrayGenome<double> &dad=DYN_CAST(const GA1DArrayGenome<double> &, p2);
+
+  int nc=0;
+  unsigned int i;
+
+  if(c1 && c2){
+    GA1DArrayGenome<double> &sis=DYN_CAST(GA1DArrayGenome<double> &, *c1);
+    GA1DArrayGenome<double> &bro=DYN_CAST(GA1DArrayGenome<double> &, *c2);
+
+    if(sis.length() != mom.length() || bro.length() != dad.length() ||
+       mom.length() != dad.length()){
+      GAErr(GA_LOC, mom.className(), "uniform cross", gaErrSameLengthReqd);
+      return nc;
+    }
+    for(i=0; i<mom.length(); i++){
+      if(GAFlipCoin(0.5)){
+        sis.gene(i, mom.gene(i));
+        bro.gene(i, dad.gene(i));
+      }else{
+        sis.gene(i, dad.gene(i));
+        bro.gene(i, mom.gene(i));
+      }
+    }
+    nc = 2;
+  }else if(c1 || c2){
+    GA1DArrayGenome<double> &sis = (c1 ?
+    DYN_CAST(GA1DArrayGenome<double> &, *c1) :
+    DYN_CAST(GA1DArrayGenome<double> &, *c2));
+
+    if(sis.length() != mom.length() || mom.length() != dad.length()){
+      GAErr(GA_LOC, mom.className(), "uniform cross", gaErrSameLengthReqd);
+      return nc;
+    }
+    for(i=0; i<mom.length(); i++){
+      if(GAFlipCoin(0.5)){
+        sis.gene(i, mom.gene(i));
+      }else{
+        sis.gene(i, dad.gene(i));
+      }
+    }
+    nc = 1;
+  }
+  return nc;
+}
 

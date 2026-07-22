@@ -12,6 +12,7 @@
 #include "tools.hpp"
 #include "ddh.hpp"
 #include "erepobj.hpp"
+#include "genes.hpp"
 #include "mpi.h"
 
 extern int power;
@@ -73,21 +74,12 @@ bool Erepobj::checkskf(const string ifilename, int type){
 } 
 
 void Erepobj::writeskgen(const string& tmp_dir, const GAGenome& g) {
-  GA1DArrayGenome<double>& gnome = (GA1DArrayGenome<double>&)g;
-  int i,j,k,nvars,idx,idx2,idx0;
+  apply_genome_to_params(g, *this, ddh);
+  int i,j,k,nvars;
   string sorbital;
   string stemp = tmp_dir+"/"+"skdef.hsd";
   ofstream fout(stemp.c_str());
-  bool hp,cp,np,op;
   bool pass; 
-  hp=cp=np=op=false;
-
-  idx0=0; 
-  for(i=0;i<velem.size();i++) idx0=idx0+velem[i].lmax+2;
-  if(ddh.td3) idx0=idx0+ddh.d3.size();
-  if(ddh.tdamph) idx0++;
-  if(ddh.thubbardderivs) idx0=idx0+ddh.hubbardderivs.size();
-  if(ddh.tdamphver2) idx0=idx0+ddh.damphver2.size();
 
   fout.precision(6);
 
@@ -142,7 +134,6 @@ void Erepobj::writeskgen(const string& tmp_dir, const GAGenome& g) {
     6P = 3.0 3.0\n\
   }\n\n";
  
-  idx=0;
   for(i=0; i<velem.size();i++){
     pass=false;
     for(j=0; j<atomparameters.size();j++){
@@ -159,26 +150,22 @@ void Erepobj::writeskgen(const string& tmp_dir, const GAGenome& g) {
     fout<<"    DftbAtom {\n";
     fout<<"      ShellResolved = "<<atomparameters[j].shellresolved<<"\n";
     fout.precision(velem[i].radius[0].precision);
-    fout<<"      DensityCompression = PowerCompression { Power = "<<atomparameters[j].power<<"; Radius = "<<std::fixed<<gnome.gene(idx)<<"}\n";
-    idx++;
+    fout<<"      DensityCompression = PowerCompression { Power = "<<atomparameters[j].power<<"; Radius = "<<std::fixed<<velem[i].radius[0].r<<"}\n";
     fout<<"      WaveCompressions = SingleAtomCompressions {\n";
     nvars=velem[i].lmax+2;
     for(k=1; k<nvars; k++){
       fout.precision(velem[i].radius[k].precision);
       if(k==1) sorbital="S"; else if(k==2) sorbital="P"; else if(k==3) sorbital="D";
-      fout<<"        "<<sorbital<<" = PowerCompression { Power = "<<atomparameters[j].power<<"; Radius = "<<std::fixed<<gnome.gene(idx)<<"}\n";
-      idx++;
+      fout<<"        "<<sorbital<<" = PowerCompression { Power = "<<atomparameters[j].power<<"; Radius = "<<std::fixed<<velem[i].radius[k].r<<"}\n";
     }
     fout<<"      }\n";
-    idx2=idx0;
     if(ddh.thubbards){
       fout<<"      CustomizedHubbards {\n";
       for(k=0;k<ddh.hubbards.size();k++){ 
         if(velem[i].name==ddh.hubbards[k].name){
           fout.precision(ddh.hubbards[k].precision);
-          fout<<"        "<<ddh.hubbards[k].type<<" = "<< gnome.gene(idx2)<<endl;
+          fout<<"        "<<ddh.hubbards[k].type<<" = "<< ddh.hubbards[k].value<<endl;
         }
-        idx2++;
       }
       fout<<"      }\n";
     }
@@ -187,9 +174,8 @@ void Erepobj::writeskgen(const string& tmp_dir, const GAGenome& g) {
       for(k=0;k<ddh.vorbes.size();k++){ 
         if(velem[i].name==ddh.vorbes[k].name){
           fout.precision(ddh.vorbes[k].precision);
-          fout<<"        "<<ddh.vorbes[k].type<<" = "<< gnome.gene(idx2)<<endl;
+          fout<<"        "<<ddh.vorbes[k].type<<" = "<< ddh.vorbes[k].value<<endl;
         }
-        idx2++;
       }
       fout<<"      }\n";
     }
@@ -212,111 +198,43 @@ void Erepobj::writeskgen(const string& tmp_dir, const GAGenome& g) {
 } 
 
 void Erepobj::makeskf(const GAGenome& g) {
-  GA1DArrayGenome<double>& genome = (GA1DArrayGenome<double>&)g;
-  int ie1,ie2,i,j,k,it,idx;
+  apply_genome_to_params(g, *this, ddh);
+  int ie1,ie2,i,j,k,it;
   bool pass,pass2;
   ostringstream ss;
   int id=0;
-  double tmp,tmps,tmpp;
   string sfilenametmp;
 
-  //ie1=-1;
-  //for(i=0;i<velem.size();i++){
-  //  ie1=ie1+2;  
-  //  tmps=genome.gene(ie1);
-  //  tmpp=genome.gene(ie1+1);
-  //  if(velem[i].optype==2){
-  //    genome.gene(ie1+1,tmps);
-  //  }else if(velem[i].optype==3){
-  //    genome.gene(ie1+1,tmps);
-  //    genome.gene(ie1+2,tmps);
-  //  }else if(velem[i].optype==12){
-  //    genome.gene(ie1,GAMin(tmps, tmpp));
-  //    genome.gene(ie1+1,GAMax(tmps, tmpp));
-  //  }else if(velem[i].optype==14){
-  //    genome.gene(ie1,GAMin(tmps, tmpp));
-  //    genome.gene(ie1+1,GAMax(tmps, tmpp));
-  //    if(genome.gene(ie1+1)-genome.gene(ie1)<0.4) genome.gene(ie1,genome.gene(ie1+1)-0.4); 
-  //  }else if(velem[i].optype==21){
-  //    genome.gene(ie1,GAMax(tmps, tmpp));
-  //    genome.gene(ie1+1,GAMin(tmps, tmpp));
-  //  }else if(velem[i].optype==11){
-  //    genome.gene(ie1-1,tmps);
-  //  }else if(velem[i].optype==115){
-  //    genome.gene(ie1-1,1.5*tmps);
-  //  }else if(velem[i].optype==111){
-  //    genome.gene(ie1-1,tmps);
-  //    genome.gene(ie1+1,tmps);
-  //  }else if(velem[i].optype==1115){
-  //    genome.gene(ie1-1,1.5*tmps);
-  //    genome.gene(ie1+1,tmps);
-  //  }
-  //  ie1=ie1+velem[i].lmax; 
-  //}
- 
   MPI_Comm_rank(MPI_COMM_WORLD, &id);
 
   string call,stemp,stemp2,part1,part2,part3; 
   string skf_dir=scratch+"/buildsks.tmp_"+itoa(id,10);
   call="rm -rf "+skf_dir+"; mkdir -p "+skf_dir+";";
 	it=system(call.c_str());	
-  writeskgen(skf_dir,genome);
-
-  idx=0; 
-  for(i=0;i<velem.size();i++) idx=idx+velem[i].lmax+2;
-  if(ddh.td3) idx=idx+ddh.d3.size();
-  if(ddh.tdamph) idx++;
-  if(ddh.thubbardderivs) idx=idx+ddh.hubbardderivs.size();
-  if(ddh.tdamphver2) idx=idx+ddh.damphver2.size();
-
-  part3="";
-  if(ddh.thubbards){
-    part3+="_hub";
-    for(i=0;i<ddh.hubbards.size();i++){ 
-      ss.str(std::string());
-      ss.precision(ddh.hubbards[i].precision); 
-      ss<<std::fixed<<genome.gene(idx);
-      part3+="_"+ddh.hubbards[i].name+ss.str();
-      idx++;
-    }
-  }
-  if(ddh.tvorbes){
-    part3+="_vor";
-    for(i=0;i<ddh.vorbes.size();i++){ 
-      ss.str(std::string());
-      ss.precision(ddh.vorbes[i].precision); 
-      ss<<std::fixed<<genome.gene(idx);
-      part3+="_"+ddh.vorbes[i].name+ss.str();
-      idx++;
-    }
-  }
+  writeskgen(skf_dir,g);
 
   ie1=0;
   for(i=0;i<velem.size();i++){
     part1=velem[i].name;  
     ss.str(std::string());
-    ss.precision(velem[i].radius[0].precision); ss<<std::fixed<<genome.gene(ie1);
+    ss.precision(velem[i].radius[0].precision); ss<<std::fixed<<velem[i].radius[0].r;
     part1+="_d"+ss.str();
-    ie1++;  
     for(k=1;k<velem[i].lmax+2.;k++){
       ss.str(std::string());
-      ss.precision(velem[i].radius[k].precision); ss<<std::fixed<<genome.gene(ie1);
+      ss.precision(velem[i].radius[k].precision); ss<<std::fixed<<velem[i].radius[k].r;
       part1+="_w"+ss.str();  
-      ie1++; 
     }
-    ie2=0;
     for(j=0;j<velem.size();j++){
       part2=velem[j].name;  
       ss.str(std::string());
-      ss.precision(velem[j].radius[0].precision); ss<<std::fixed<<genome.gene(ie2);
+      ss.precision(velem[j].radius[0].precision); ss<<std::fixed<<velem[j].radius[0].r;
       part2+="_d"+ss.str();  
-      ie2++;
       for(k=1;k<velem[j].lmax+2.;k++){
         ss.str(std::string());
-        ss.precision(velem[j].radius[k].precision); ss<<std::fixed<<genome.gene(ie2);
+        ss.precision(velem[j].radius[k].precision); ss<<std::fixed<<velem[j].radius[k].r;
         part2+="_w"+ss.str();  
-        ie2++;
       }
+      part3=pair_onsite_suffix(ddh, velem[i].name, velem[j].name);
       if(lc){
         ss.str(std::string());
         ss.precision(2);ss<<std::fixed<<omega;

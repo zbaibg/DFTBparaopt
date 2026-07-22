@@ -9,6 +9,7 @@
 #include "erepobj.hpp"
 #include "tools.hpp"
 #include "ddh.hpp"
+#include "genes.hpp"
 
 extern sddh ddh;
 extern string scratch;
@@ -106,113 +107,40 @@ double Erepobj::score(int id){
 }
 
 void Erepobj::get_residual(const GAGenome& g) {
-  double tmp,tmps,tmpp;
   restotU=0; restotS=0; restot2=0; restot4=0;
   GA1DArrayGenome<double>& genome = (GA1DArrayGenome<double>&)g;
+  apply_genome_to_params(genome, *this, ddh);
   int ie1,ie2,i,j,k,ia;
   double tscore,tmscore;
-  int id=0,idx;
+  int id=0;
 
-    //ie1=-1;
-    //for(i=0;i<velem.size();i++){
-    //  ie1=ie1+2;  
-    //  tmps=genome.gene(ie1);
-    //  tmpp=genome.gene(ie1+1);
-    //  if(velem[i].optype==2){
-    //    genome.gene(ie1+1,tmps);
-    //  }else if(velem[i].optype==3){
-    //    genome.gene(ie1+1,tmps);
-    //    genome.gene(ie1+2,tmps);
-    //  }else if(velem[i].optype==12){
-    //    genome.gene(ie1,GAMin(tmps, tmpp));
-    //    genome.gene(ie1+1,GAMax(tmps, tmpp));
-    //  }else if(velem[i].optype==14){
-    //    genome.gene(ie1,GAMin(tmps, tmpp));
-    //    genome.gene(ie1+1,GAMax(tmps, tmpp));
-    //    if(genome.gene(ie1+1)-genome.gene(ie1)<0.4) genome.gene(ie1,genome.gene(ie1+1)-0.4); 
-    //  }else if(velem[i].optype==21){
-    //    genome.gene(ie1,GAMax(tmps, tmpp));
-    //    genome.gene(ie1+1,GAMin(tmps, tmpp));
-    //  }else if(velem[i].optype==11){
-    //    genome.gene(ie1-1,tmps);
-    //  }else if(velem[i].optype==115){
-    //    genome.gene(ie1-1,1.5*tmps);
-    //  }else if(velem[i].optype==111){
-    //    genome.gene(ie1-1,tmps);
-    //    genome.gene(ie1+1,tmps);
-    //  }else if(velem[i].optype==1115){
-    //    genome.gene(ie1-1,1.5*tmps);
-    //    genome.gene(ie1+1,tmps);
-    //  }
-    //  ie1=ie1+velem[i].lmax; 
-    //}
- 
     ostringstream ss;
-//  id=omp_get_thread_num();
     id=0;
     string call,stemp,part1,part2,part3; 
     string skf_dir=scratch+"/slakos.tmp_"+itoa(id,10);
-//  call="rm -rf "+skf_dir+"; mkdir -p "+skf_dir+"; ";
     call=" mkdir -p "+skf_dir+"; ";
 
-    idx=0; 
-    for(i=0;i<velem.size();i++) idx=idx+velem[i].lmax+2;
-    if(ddh.td3) idx=idx+ddh.d3.size();
-    if(ddh.tdamph) idx++;
-    if(ddh.thubbardderivs) idx=idx+ddh.hubbardderivs.size();
-    if(ddh.tdamphver2) idx=idx+ddh.damphver2.size();
-
-    part3="";
-    if(ddh.thubbards){
-      part3+="_hub";
-      for(i=0;i<ddh.hubbards.size();i++){ 
-        ss.str(std::string());
-        ss.precision(ddh.hubbards[i].precision); 
-        ss<<std::fixed<<genome.gene(idx);
-        part3+="_"+ddh.hubbards[i].name+ss.str();
-        idx++;
-      }
-    }
-    if(ddh.tvorbes){
-      part3+="_vor";
-      for(i=0;i<ddh.vorbes.size();i++){ 
-        ss.str(std::string());
-        ss.precision(ddh.vorbes[i].precision); 
-        ss<<std::fixed<<genome.gene(idx);
-        part3+="_"+ddh.vorbes[i].name+ss.str();
-        idx++;
-      }
-    }
-
-
-    ie1=0;
     for(i=0;i<velem.size();i++){
       part1=velem[i].name;  
       ss.str(std::string());
-      ss.precision(velem[i].radius[0].precision); ss<<std::fixed<<genome.gene(ie1);
-      velem[i].radius[0].r=genome.gene(ie1);
+      ss.precision(velem[i].radius[0].precision); ss<<std::fixed<<velem[i].radius[0].r;
       part1+="_d"+ss.str();
-      ie1++;  
       for(k=1;k<velem[i].lmax+2.;k++){
         ss.str(std::string());
-        ss.precision(velem[i].radius[k].precision); ss<<std::fixed<<genome.gene(ie1);
-        velem[i].radius[k].r=genome.gene(ie1);
+        ss.precision(velem[i].radius[k].precision); ss<<std::fixed<<velem[i].radius[k].r;
         part1+="_w"+ss.str();  
-        ie1++; 
       }
-      ie2=0;
       for(j=0;j<velem.size();j++){
         part2=velem[j].name;  
         ss.str(std::string());
-        ss.precision(velem[j].radius[0].precision); ss<<std::fixed<<genome.gene(ie2);
+        ss.precision(velem[j].radius[0].precision); ss<<std::fixed<<velem[j].radius[0].r;
         part2+="_d"+ss.str();  
-        ie2++;
         for(k=1;k<velem[j].lmax+2.;k++){
           ss.str(std::string());
-          ss.precision(velem[j].radius[k].precision); ss<<std::fixed<<genome.gene(ie2);
+          ss.precision(velem[j].radius[k].precision); ss<<std::fixed<<velem[j].radius[k].r;
           part2+="_w"+ss.str();  
-          ie2++;
         }
+        part3=pair_onsite_suffix(ddh, velem[i].name, velem[j].name);
         if(lc){
           ss.str(std::string());
           ss.precision(2);ss<<std::fixed<<omega;

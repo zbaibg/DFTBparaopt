@@ -14,6 +14,8 @@ extern double s1,s2,s3,s4,s5,s6,s7,s8,s9,sdenswf;
 extern double gtol;
 extern double ga_pmut, ga_pcross;
 extern bool ga,readr,restart;
+extern bool use_uniform_crossover;
+extern int crossover_align;
 extern bool runtest, skfclean;
 extern int cpu_number;
 extern int power;
@@ -178,6 +180,13 @@ void Erepobj::readinp(const string inputfile){
           if(stemp.find("runtest ")!=string::npos){ sscanf(cline,"%s %d",ctemp1,&itmp); runtest = itmp;}
           if(stemp.find("readr ")!=string::npos){ sscanf(cline,"%s %d",ctemp1,&itmp); readr= itmp;}
           if(stemp.find("restart ")!=string::npos){ sscanf(cline,"%s %d",ctemp1,&itmp); restart= itmp;}
+          if(stemp.find("uniform_crossover ")!=string::npos){ sscanf(cline,"%s %d",ctemp1,&itmp); use_uniform_crossover = (itmp != 0);}
+          if(stemp.find("crossover_align ")!=string::npos) sscanf(cline,"%s %d",ctemp1,&crossover_align);
+          if(stemp.find("crossover_type ")!=string::npos){
+            sscanf(cline,"%s %s",ctemp1,ctemp2);
+            if(string(ctemp2)=="uniform") use_uniform_crossover=true;
+            else if(string(ctemp2)=="twopoint") use_uniform_crossover=false;
+          }
         }
       }else if(stemp.find("$atomic_energy:")!=string::npos){
         ntmp=0;

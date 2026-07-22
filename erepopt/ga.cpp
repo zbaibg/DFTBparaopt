@@ -7,6 +7,7 @@
 #include <ga/std_stream.h>
 #include "erepobj.hpp"
 #include "ddh.hpp"
+#include "genes.hpp"
 #include "mpi.h"
 
 using namespace std;
@@ -36,16 +37,8 @@ void MyGASimpleGA::initialstep(){
   double value,tmpsref,tmps,tmpp;
   double buffer;
   double * abuffer;
-  length=0;
-  for(i=0;i<erepobj.velem.size();i++){ 
-    length+=erepobj.velem[i].lmax+2;
-  }
-  if(ddh.td3) length+=ddh.d3.size(); 
-  if(ddh.tdamph) length+=1;
-  if(ddh.thubbardderivs) length+=ddh.hubbardderivs.size(); 
-  if(ddh.tdamphver2) length+=ddh.damphver2.size(); 
-  if(ddh.thubbards) length+=ddh.hubbards.size(); 
-  if(ddh.tvorbes) length+=ddh.vorbes.size(); 
+  length=genome_length(erepobj, ddh);
+  int dense_length=dense_genome_length(erepobj, ddh);
 
   abuffer = new double [length];
   MPI_Status status;
@@ -62,70 +55,10 @@ void MyGASimpleGA::initialstep(){
 if(rank==0){
   for(k=0; k<pop->size(); k++){
     GA1DArrayGenome<double>& genome = (GA1DArrayGenome<double>&)pop->individual(k);
-    idx=0;
-    for(i=0;i<erepobj.velem.size();i++){ 
-      nvars=erepobj.velem[i].lmax+2;
-      for(j=0; j<nvars; j++){
-        value  = genome.gene(idx);
-        value  = GAMax(erepobj.velem[i].radius[j].minr, value);
-        value  = GAMin(erepobj.velem[i].radius[j].maxr, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.td3){
-      for(i=0;i<ddh.d3.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.d3[i].min, value);
-        value  = GAMin(ddh.d3[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.tdamph){
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.damph.min, value);
-      value  = GAMin(ddh.damph.max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-    if(ddh.thubbardderivs){
-      for(i=0;i<ddh.hubbardderivs.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.hubbardderivs[i].min, value);
-        value  = GAMin(ddh.hubbardderivs[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.tdamphver2){
-      for(i=0;i<ddh.damphver2.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.damphver2[i].min, value);
-        value  = GAMin(ddh.damphver2[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.thubbards){
-      for(i=0;i<ddh.hubbards.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.hubbards[i].min, value);
-        value  = GAMin(ddh.hubbards[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.tvorbes){
-      for(i=0;i<ddh.vorbes.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.vorbes[i].min, value);
-        value  = GAMin(ddh.vorbes[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
+    clamp_free_genome(genome, erepobj, ddh);
+    apply_genome_to_params(genome, erepobj, ddh);
 
+    if(length == dense_length){
     ie1=-1;
     for(i=0;i<erepobj.velem.size();i++){
       ie1=ie1+2;  
@@ -215,6 +148,7 @@ if(rank==0){
         genome.gene(ie1,tmps);
       }
       ie1=ie1+erepobj.velem[i].lmax; 
+    }
     }
   }
 }
@@ -285,16 +219,8 @@ void MyGASimpleGA::step() {
   double value,tmpsref,tmps,tmpp;
   double buffer;
   double * abuffer;
-  length=0;
-  for(i=0;i<erepobj.velem.size();i++){ 
-    length+=erepobj.velem[i].lmax+2;
-  }
-  if(ddh.td3) length+=ddh.d3.size(); 
-  if(ddh.tdamph) length+=1;
-  if(ddh.thubbardderivs) length+=ddh.hubbardderivs.size(); 
-  if(ddh.tdamphver2) length+=ddh.damphver2.size(); 
-  if(ddh.thubbards) length+=ddh.hubbards.size(); 
-  if(ddh.tvorbes) length+=ddh.vorbes.size(); 
+  length=genome_length(erepobj, ddh);
+  int dense_length=dense_genome_length(erepobj, ddh);
 
   abuffer = new double [length];
   MPI_Status status;
@@ -363,70 +289,10 @@ if(rank==0){
 
   for(k=0; k<pop->size(); k++){
     GA1DArrayGenome<double>& genome = (GA1DArrayGenome<double>&)pop->individual(k);
-    idx=0;
-    for(i=0;i<erepobj.velem.size();i++){ 
-      nvars=erepobj.velem[i].lmax+2;
-      for(j=0; j<nvars; j++){
-        value  = genome.gene(idx);
-        value  = GAMax(erepobj.velem[i].radius[j].minr, value);
-        value  = GAMin(erepobj.velem[i].radius[j].maxr, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.td3){
-      for(i=0;i<ddh.d3.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.d3[i].min, value);
-        value  = GAMin(ddh.d3[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.tdamph){
-      value  = genome.gene(idx);
-      value  = GAMax(ddh.damph.min, value);
-      value  = GAMin(ddh.damph.max, value);
-      genome.gene(idx,value);
-      idx++;
-    }
-    if(ddh.thubbardderivs){
-      for(i=0;i<ddh.hubbardderivs.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.hubbardderivs[i].min, value);
-        value  = GAMin(ddh.hubbardderivs[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.tdamphver2){
-      for(i=0;i<ddh.damphver2.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.damphver2[i].min, value);
-        value  = GAMin(ddh.damphver2[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.thubbards){
-      for(i=0;i<ddh.hubbards.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.hubbards[i].min, value);
-        value  = GAMin(ddh.hubbards[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
-    if(ddh.tvorbes){
-      for(i=0;i<ddh.vorbes.size();i++){ 
-        value  = genome.gene(idx);
-        value  = GAMax(ddh.vorbes[i].min, value);
-        value  = GAMin(ddh.vorbes[i].max, value);
-        genome.gene(idx,value);
-        idx++;
-      }
-    }
+    clamp_free_genome(genome, erepobj, ddh);
+    apply_genome_to_params(genome, erepobj, ddh);
 
+    if(length == dense_length){
     ie1=-1;
     for(i=0;i<erepobj.velem.size();i++){
       ie1=ie1+2;  
@@ -516,6 +382,7 @@ if(rank==0){
         genome.gene(ie1,tmps);
       }
       ie1=ie1+erepobj.velem[i].lmax; 
+    }
     }
   }
 }
