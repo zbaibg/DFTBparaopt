@@ -21,6 +21,8 @@ bool   ga=true,read_spline=true,fsmooth_spline=true,aa_spline=true;
 bool   fderivative1st=true,fderivative2nd=true,fderivative3rd=false;
 bool   runtest=false,endgen=false,grid_update=true;
 bool   runxtb=false,runmopac=false;
+int    verify_assembly_ntrials=0;
+int    time_assembly_nrep=0;
 string xtbarg="",xtbarg2="",mopacarg="";
 int    ga_popsize=3000,ga_ngen=1000,ga_scoref=1,ga_flushf=1;
 int    score_type=2,preserved_num=300,destroy_num=30,popsizemin=2,seed=0;
@@ -79,6 +81,27 @@ int main(int argc, char** argv){
   }
   inputfilename = argv[1];
   allequations.prepare(inputfilename.c_str());
+
+  if (verify_assembly_ntrials > 0) {
+    cout << "# verify_assembly: comparing cached vs legacy eqmat/vref for "
+         << verify_assembly_ntrials << " knot trial(s)" << endl;
+    const bool ok = allequations.verify_assembly(verify_assembly_ntrials);
+    if (!ok) {
+      cerr << "verify_assembly failed" << endl;
+      return 1;
+    }
+    cout << "verify_assembly: all trials matched (bit-exact)" << endl;
+    if (time_assembly_nrep > 0) {
+      allequations.time_assembly(time_assembly_nrep);
+    }
+    cout << "** repopt normal termination **" << endl << endl;
+    return 0;
+  }
+  if (time_assembly_nrep > 0) {
+    allequations.time_assembly(time_assembly_nrep);
+    cout << "** repopt normal termination **" << endl << endl;
+    return 0;
+  }
 
   min_step01=min_step01/AA_Bohr;
 

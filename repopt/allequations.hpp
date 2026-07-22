@@ -420,13 +420,41 @@ private:
   void   get_minRbond();
   void   validate_grid_knot_spacing();
 
+  // Knot-independent pair / reaction tables. Built once in prepare() after
+  // sizeeqsys(). Distances and potential identities never change during the
+  // knot GA; only the knot vector (hence segment index + basis powers) does.
+  struct EContrib {
+    int    ipot;
+    double dist;
+  };
+  struct FContrib {
+    int    ieq;     // absolute row of Fx for the atom this pair contributes to
+    int    ipot;
+    double dist;
+    double fac[3];  // (r1-r2)/|r| for x,y,z
+  };
+  struct ForceAtomRef {
+    int    ieq;
+    double vref[3];
+    double weight;
+  };
+  bool                      assembly_cache_ready;
+  vector<int>               pot_col0;
+  vector<vector<EContrib> > vmol_econtrib;
+  vector<vector<EContrib> > vreamol_econtrib;
+  vector<FContrib>          force_contribs;
+  vector<ForceAtomRef>      force_atom_refs;
+
   int   include_splineeq(const int ieq_);
   int   include_energyeq(const int ieq_);
   int   include_forceeq (const int ieq_);
   int   include_addeq   (const int ieq_);
   int   include_reaeq   (const int ieq_);
   int   include_smootheq(const int ieq_);
-  //void   include_frequencyeq();
+  // Legacy (pre-pair-table) assemblers kept for verify_assembly bit-exact checks.
+  int   include_forceeq_legacy (const int ieq_);
+  int   include_reaeq_legacy   (const int ieq_);
+  void  add_energy_lhs_legacy(const int ieq, const Molecule& mol, const double coeff);
   void   weighteqsys();
   void   svd_all();
   void   svd_fulfill_spleq();
@@ -434,13 +462,22 @@ private:
 
   double myfac(const int a, const int b);
   void   add_energy_lhs(const int ieq, const Molecule& mol,const double coeff);
+  void   add_energy_lhs_from_contribs(const int ieq, const vector<EContrib>& contribs, const double coeff);
   Colind findcolind(const string  atomname1, const string atomname2, const double dist,
                           const string& molname,   const int at1,          const int at2     );
   string findpotname(const string at1, const string at2) const;
+  int    find_pot_index(const string& potname) const;
+  int    knot_segment_index(const int ipot, const double dist,
+                            const string& atomname1, const string& atomname2,
+                            const string& molname, const int at1, const int at2) const;
   void   excludepot(const string potname, const double dist, const string& molname);
   void   ifnotfile(const string filename) const;
   void   addextef(const int ieq,const Molecule& mol,const int at1, 
           const int at2,const string ef,const double coeff);
+  void build_assembly_cache();
+  void collect_energy_contribs(const Molecule& mol, vector<EContrib>& out);
+  int  fill_opt_energy_pair(const int ieq, const int ipot, const double dist, const double coeff);
+  int  fill_opt_force_pair (const int ieq, const int ipot, const double dist, const double fac[3]);
 
 public:
   Allequations();
@@ -453,12 +490,22 @@ public:
   double restot4,rese4,resf4,resadd4,resrea4,ressmooth4;  // RMS2 of residuals (root mean square)
   double restot8,rese8,resf8,resadd8,resrea8,ressmooth8;  // RMS4 of residuals (root mean square)
   int    nrows, ncols, nspleq, neeq, nfeq, naddeq, nreaeq, nsmootheq, nallequations, nelem, natom;
+  // When true (default), force/reaction/energy LHS use the pair tables.
+  // verify_assembly() temporarily toggles this to compare against legacy.
+  bool   use_assembly_cache;
   void calculate(const string inputfile);
   void prepare(const string inputfile);
   void rereadmol(const string inputfile);
   void reset();
   double score();
   void writeout() const;
+  // Assemble eqmat/vref through include_* only (no weighteqsys / SVD).
+  void assemble_equations();
+  // Bit-exact check: for ntrial knot vectors, compare cached vs legacy eqmat/vref.
+  // Returns true on success; prints max abs diffs and returns false on mismatch.
+  bool verify_assembly(int ntrial = 8);
+  // Time cached vs legacy assemble_equations() for nrep repetitions (same knots).
+  void time_assembly(int nrep = 50);
 };
 
 

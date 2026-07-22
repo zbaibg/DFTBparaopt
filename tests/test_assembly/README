@@ -1,0 +1,10 @@
+# test_assembly
+
+Bit-exact regression for the knot-GA design-matrix pair table.
+
+- `run.sh` saves a DFTB cache, then runs `verify_assembly 16`.
+- Pass criterion: cached and legacy `eqmat` / `vref` / `vweight` match
+  exactly for 16 perturbed knot vectors.
+- Optional cluster: `sbatch sbatch_run.sh` (ensure `dftb+` is on PATH).
+- Optional microbench keyword: `time_assembly <n>` compares cached vs
+  legacy `assemble_equations()` wall time.

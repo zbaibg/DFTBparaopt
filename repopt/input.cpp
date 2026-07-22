@@ -19,6 +19,8 @@ extern bool   ga,read_spline,fsmooth_spline,aa_spline;
 extern bool   fderivative1st,fderivative2nd,fderivative3rd;
 extern bool   runtest,grid_update;
 extern bool   runxtb,runmopac;
+extern int    verify_assembly_ntrials;
+extern int    time_assembly_nrep;
 extern string xtbarg,xtbarg2,mopacarg;
 extern sddh   ddh;
 
@@ -66,6 +68,8 @@ void Allequations::readinp(const string inputfile){
           //                        double precision (round-trip safe).
           if(stemp.find("dataset_load ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); dataset_load_path=ctemp2;}
           if(stemp.find("dataset_save ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); dataset_save_path=ctemp2;}
+          if(stemp.find("verify_assembly ")!=string::npos) sscanf(cline,"%s %d",ctemp1,&verify_assembly_ntrials);
+          if(stemp.find("time_assembly ")!=string::npos) sscanf(cline,"%s %d",ctemp1,&time_assembly_nrep);
         }
       }else if(stemp.find("$variables:")!=string::npos){
         while(infile.getline(cline,512)){

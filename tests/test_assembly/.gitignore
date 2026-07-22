@@ -1,0 +1,8 @@
+dftb.tmp/
+dftb_cache.dat
+*.out
+*.err
+*.diff
+*.log
+score.dat
+pop.*.dat

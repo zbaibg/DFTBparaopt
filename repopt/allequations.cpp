@@ -3,6 +3,7 @@
 #include <string>
 #include <cmath>
 #include <chrono>
+#include <algorithm>
 #include <Eigen/Dense>
 #include "allequations.hpp"
 #include "auxiliary.hpp"
@@ -16,9 +17,11 @@ using namespace Eigen;
 extern bool runtest;
 extern int ilmsfit,idecompose,nreplicate,dftbout_new;
 
-Allequations::Allequations(){}
+Allequations::Allequations()
+  : assembly_cache_ready(false), use_assembly_cache(true) {}
 
-Allequations::Allequations(const string inputfile) {
+Allequations::Allequations(const string inputfile)
+  : assembly_cache_ready(false), use_assembly_cache(true) {
   calculate(inputfile);    
 }
 
@@ -29,6 +32,7 @@ void Allequations::calculate(const string inputfile) {
   sort_inputdist();
   get_autogrids();
   sizeeqsys();    
+  build_assembly_cache();
   ieq = include_splineeq(0);
   ieq = include_energyeq(ieq);
   ieq = include_forceeq(ieq);
@@ -237,6 +241,7 @@ void Allequations::prepare(const string inputfile) {
   sizeeqsys();    
   get_minRbond();
   validate_grid_knot_spacing();
+  build_assembly_cache();
 }
 
 void Allequations::reset() {
@@ -363,6 +368,7 @@ void Allequations::sizeeqsys() {
   sigma.resize(ncols);
   sigma_e_f.resize(nfree+natfit);
   vres.resize(nrows);
+  assembly_cache_ready = false;
   
   // initialize eqmat, vref, vunkown, sigmas to 0, vweight to 1
   for (int i=0; i < nrows; i++){
@@ -467,6 +473,28 @@ int Allequations::include_energyeq(const int ieq_){
 }
 
 int Allequations::include_forceeq(const int ieq_){
+  if (use_assembly_cache && assembly_cache_ready) {
+    // Cached path: pair geometry + pot identity are fixed; only knot
+    // segment / basis powers depend on the current vr[].
+    for (size_t ic = 0; ic < force_contribs.size(); ic++) {
+      const FContrib& c = force_contribs[ic];
+      fill_opt_force_pair(c.ieq, c.ipot, c.dist, c.fac);
+    }
+    for (size_t ia = 0; ia < force_atom_refs.size(); ia++) {
+      const ForceAtomRef& a = force_atom_refs[ia];
+      vref[a.ieq  ]    += a.vref[0];
+      vref[a.ieq+1]    += a.vref[1];
+      vref[a.ieq+2]    += a.vref[2];
+      vweight[a.ieq]    = a.weight;
+      vweight[a.ieq+1]  = a.weight;
+      vweight[a.ieq+2]  = a.weight;
+    }
+    return ieq_ + (int)force_atom_refs.size() * 3;
+  }
+  return include_forceeq_legacy(ieq_);
+}
+
+int Allequations::include_forceeq_legacy(const int ieq_){
 ///////////////////////////////////////////////////////////////////////////////
 //     F_k       = 0   = Fel_k + Frep_k       , k is coord of every atom     //
 // =>  Frep_k    = - Fel_k                                                   //
@@ -575,6 +603,26 @@ int Allequations::include_addeq(const int ieq_) {
 }
 
 int Allequations::include_reaeq(const int ieq_) {
+  if (use_assembly_cache && assembly_cache_ready) {
+    int ieq=ieq_;
+    for (int irea=0; irea < vrea.size(); irea++ ){
+      vrea[irea].treaE=0.0;
+      for (int imol=0; imol < vrea[irea].vmol.size(); imol++){
+        int ind=vrea[irea].vmol[imol];
+        add_energy_lhs_from_contribs(ieq, vreamol_econtrib[ind], vrea[irea].vcoeff[imol]);
+        vref[ieq] -= vrea[irea].vcoeff[imol] * vreamol[ind].eel;
+        vrea[irea].treaE += vrea[irea].vcoeff[imol] * vreamol[ind].eel;
+      }
+      vref[ieq]    += vrea[irea].reaE;
+      vweight[ieq]  = vrea[irea].reaweight;
+      ieq++;
+    }
+    return ieq;
+  }
+  return include_reaeq_legacy(ieq_);
+}
+
+int Allequations::include_reaeq_legacy(const int ieq_) {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 //  Erea = sum (E_tot^prod) - sum(E_tot^reactants)                                            //
 //  e.g.  3 c2h2 --> c6h6                                                                     //
@@ -591,7 +639,7 @@ int Allequations::include_reaeq(const int ieq_) {
     vrea[irea].treaE=0.0;
     for (int imol=0; imol < vrea[irea].vmol.size(); imol++){
       ind=vrea[irea].vmol[imol];
-      add_energy_lhs(ieq,vreamol[ind],vrea[irea].vcoeff[imol]); 
+      add_energy_lhs_legacy(ieq,vreamol[ind],vrea[irea].vcoeff[imol]); 
       vref[ieq] -= vrea[irea].vcoeff[imol] * vreamol[ind].eel;
       vrea[irea].treaE += vrea[irea].vcoeff[imol] * vreamol[ind].eel;
     }
@@ -1006,6 +1054,25 @@ double Allequations::myfac(const int a, const int b){
 
 
 void Allequations::add_energy_lhs(const int ieq, const Molecule& mol, const double coeff){
+  if (use_assembly_cache && assembly_cache_ready) {
+    // Prefer table lookup by molecule address within vmol / vreamol.
+    for (size_t im = 0; im < vmol.size(); im++) {
+      if (&vmol[im] == &mol) {
+        add_energy_lhs_from_contribs(ieq, vmol_econtrib[im], coeff);
+        return;
+      }
+    }
+    for (size_t im = 0; im < vreamol.size(); im++) {
+      if (&vreamol[im] == &mol) {
+        add_energy_lhs_from_contribs(ieq, vreamol_econtrib[im], coeff);
+        return;
+      }
+    }
+  }
+  add_energy_lhs_legacy(ieq, mol, coeff);
+}
+
+void Allequations::add_energy_lhs_legacy(const int ieq, const Molecule& mol, const double coeff){
 
   Colind i; 
   for (int at1=0; at1 < mol.natom-1; at1++){
@@ -1127,5 +1194,288 @@ void Allequations::addextef(const int ieq,const Molecule& mol,const int at1,
       const int at2,const string ef,const double coeff){
   return;
 }
+
+int Allequations::find_pot_index(const string& potname) const {
+  for (int ipot = 0; ipot < (int)vpot.size(); ipot++) {
+    if (vpot[ipot].potname == potname) return ipot;
+  }
+  return -1;
+}
+
+// Same segment scan as findcolind (dist >= vr[k] advances k). Returns k.
+// k==0 => below first knot (fatal); k>=nknots => beyond cutoff.
+int Allequations::knot_segment_index(const int ipot, const double dist,
+                                     const string& atomname1, const string& atomname2,
+                                     const string& molname, const int at1, const int at2) const {
+  int k = 0;
+  for (; k < (int)vpot[ipot].vr.size() && dist >= vpot[ipot].vr[k]; k++) {}
+  if (k == 0) {
+    cerr << endl << "ERROR: " << endl << endl
+         << atomname1 << at1+1
+         << atomname2 << at2+1 << "    " << dist*AA_Bohr << " AA   "
+         << molname << endl
+         << "This distance in this molecule is smaller than the value "
+         << "of the first knot of the respective potential. " << endl
+         << "Solution: rerun with first knot shifted to a smaller value"
+         << endl << "exit repopt" << endl << endl;
+    exit(1);
+  }
+  return k;
+}
+
+int Allequations::fill_opt_energy_pair(const int ieq, const int ipot, const double dist, const double coeff) {
+  const int k = knot_segment_index(ipot, dist, "?", "?", "cached", 0, 0);
+  if (k >= (int)vpot[ipot].vr.size()) return 0; // beyond cutoff
+  int ic = pot_col0[ipot] + (k - 1) * (vpot[ipot].ordspl + 1);
+  for (int j = 0; j <= vpot[ipot].ordspl; j++) {
+    eqmat(ieq, ic) += coeff * pow(dist - vpot[ipot].vr[k - 1], j);
+    ic++;
+  }
+  return 1;
+}
+
+int Allequations::fill_opt_force_pair(const int ieq, const int ipot, const double dist, const double fac[3]) {
+  // Use dummy names only for the fatal below-first-knot path; cached pairs
+  // were valid at prepare time so this should not trigger in normal GA use.
+  const int k = knot_segment_index(ipot, dist, "?", "?", "cached", 0, 0);
+  if (k >= (int)vpot[ipot].vr.size()) return 0;
+  const int ic0 = pot_col0[ipot] + (k - 1) * (vpot[ipot].ordspl + 1);
+  for (int xyz = 0; xyz < 3; xyz++) {
+    for (int j = 1; j <= vpot[ipot].ordspl; j++) {
+      eqmat(ieq + xyz, ic0 + j) += -fac[xyz] * j * pow(dist - vpot[ipot].vr[k - 1], j - 1);
+    }
+  }
+  return 1;
+}
+
+void Allequations::add_energy_lhs_from_contribs(const int ieq, const vector<EContrib>& contribs, const double coeff) {
+  for (size_t i = 0; i < contribs.size(); i++) {
+    fill_opt_energy_pair(ieq, contribs[i].ipot, contribs[i].dist, coeff);
+  }
+}
+
+void Allequations::collect_energy_contribs(const Molecule& mol, vector<EContrib>& out) {
+  out.clear();
+  for (int at1 = 0; at1 < mol.natom - 1; at1++) {
+    for (int at2 = at1 + 1; at2 < mol.natom; at2++) {
+      const double dist = mol.dist(at1, at2);
+      const string potname = findpotname(mol.atomname[at1], mol.atomname[at2]);
+      const int ipot = find_pot_index(potname);
+      if (ipot < 0) {
+        // Non-optimized pot: legacy only calls addextef (currently a no-op)
+        // and excludepot for bookkeeping. Record exclusion once here.
+        excludepot(potname, dist, mol.name);
+        continue;
+      }
+      // Keep pairs even if currently beyond cutoff: cutoff knot can move in GA.
+      EContrib c;
+      c.ipot = ipot;
+      c.dist = dist;
+      out.push_back(c);
+    }
+  }
+}
+
+void Allequations::build_assembly_cache() {
+  pot_col0.assign(vpot.size(), 0);
+  int col = 0;
+  for (int ipot = 0; ipot < (int)vpot.size(); ipot++) {
+    pot_col0[ipot] = col;
+    col += (vpot[ipot].nknots - 1) * (vpot[ipot].ordspl + 1);
+  }
+
+  vmol_econtrib.assign(vmol.size(), vector<EContrib>());
+  for (size_t im = 0; im < vmol.size(); im++) {
+    collect_energy_contribs(vmol[im], vmol_econtrib[im]);
+  }
+
+  vreamol_econtrib.assign(vreamol.size(), vector<EContrib>());
+  for (size_t im = 0; im < vreamol.size(); im++) {
+    collect_energy_contribs(vreamol[im], vreamol_econtrib[im]);
+  }
+
+  force_contribs.clear();
+  force_atom_refs.clear();
+  // Absolute force-row index matches include_forceeq after spline+energy blocks.
+  int ieq = nspleq + neeq;
+  for (int imol = 0; imol < (int)vmol.size(); imol++) {
+    if (vmol[imol].fweight == 0) continue;
+    for (int at1 = 0; at1 < vmol[imol].natom; at1++) {
+      if (vmol[imol].ncontraineda > 0) {
+        bool constrained = false;
+        for (int iconstraineda = 0; iconstraineda < vmol[imol].ncontraineda; iconstraineda++) {
+          if (at1 == vmol[imol].contraineda[iconstraineda]) constrained = true;
+        }
+        if (!constrained) continue;
+      }
+      for (int at2 = 0; at2 < vmol[imol].natom; at2++) {
+        if (at1 == at2) continue;
+        double dist;
+        if (at1 > at2)      dist = vmol[imol].dist(at2, at1);
+        else                dist = vmol[imol].dist(at1, at2);
+        const string potname = findpotname(vmol[imol].atomname[at1], vmol[imol].atomname[at2]);
+        const int ipot = find_pot_index(potname);
+        if (ipot < 0) {
+          excludepot(potname, dist, vmol[imol].name);
+          // addextef is a no-op
+          continue;
+        }
+        FContrib c;
+        c.ieq = ieq;
+        c.ipot = ipot;
+        c.dist = dist;
+        for (int xyz = 0; xyz < 3; xyz++) {
+          c.fac[xyz] = (vmol[imol].coord(at1, xyz) - vmol[imol].coord(at2, xyz)) / dist;
+        }
+        force_contribs.push_back(c);
+      }
+      ForceAtomRef a;
+      a.ieq = ieq;
+      a.vref[0] = vmol[imol].frefmel(at1, 0);
+      a.vref[1] = vmol[imol].frefmel(at1, 1);
+      a.vref[2] = vmol[imol].frefmel(at1, 2);
+      a.weight = vmol[imol].fweight;
+      force_atom_refs.push_back(a);
+      ieq += 3;
+    }
+  }
+
+  size_t n_vmol_e = 0, n_vrea_e = 0;
+  for (size_t i = 0; i < vmol_econtrib.size(); i++) n_vmol_e += vmol_econtrib[i].size();
+  for (size_t i = 0; i < vreamol_econtrib.size(); i++) n_vrea_e += vreamol_econtrib[i].size();
+  assembly_cache_ready = true;
+  cout << "#assembly_cache: force_pairs=" << force_contribs.size()
+       << " force_atoms=" << force_atom_refs.size()
+       << " vmol_energy_pairs=" << n_vmol_e
+       << " vreamol_energy_pairs=" << n_vrea_e
+       << endl;
+}
+
+void Allequations::assemble_equations() {
+  reset();
+  int ieq = 0;
+  ieq = include_splineeq(0);
+  ieq = include_energyeq(ieq);
+  ieq = include_forceeq(ieq);
+  ieq = include_addeq(ieq);
+  ieq = include_reaeq(ieq);
+  ieq = include_smootheq(ieq);
+  (void)ieq;
+}
+
+bool Allequations::verify_assembly(int ntrial) {
+  if (!assembly_cache_ready) {
+    cerr << "verify_assembly: cache not built" << endl;
+    return false;
+  }
+
+  // Save knot vectors
+  vector<vector<double> > vr0(vpot.size());
+  for (size_t ip = 0; ip < vpot.size(); ip++) vr0[ip] = vpot[ip].vr;
+
+  auto restore = [&]() {
+    for (size_t ip = 0; ip < vpot.size(); ip++) vpot[ip].vr = vr0[ip];
+  };
+
+  // Deterministic knot perturbations: shift inner knots by small fractions
+  // of the local spacing, staying strictly inside (vr[0], vr[nk-1]).
+  for (int it = 0; it < ntrial; it++) {
+    for (size_t ip = 0; ip < vpot.size(); ip++) {
+      vpot[ip].vr = vr0[ip];
+      const int nk = vpot[ip].nknots;
+      for (int j = 1; j < nk - 1; j++) {
+        const double lo = vpot[ip].vr[j - 1];
+        const double hi = (j + 1 < nk) ? vr0[ip][j + 1] : vr0[ip][nk - 1];
+        const double mid = 0.5 * (lo + hi);
+        const double amp = 0.15 * (hi - lo);
+        // alternate signs / magnitudes by trial index
+        const double phase = ((it + j) % 2 == 0) ? 1.0 : -1.0;
+        double nj = mid + phase * amp * (0.2 + 0.1 * (it % 5));
+        if (nj <= lo) nj = lo + 1e-8;
+        if (nj >= hi) nj = hi - 1e-8;
+        vpot[ip].vr[j] = nj;
+      }
+      // lightly nudge cutoff within a tiny band (keep ascending)
+      if (nk >= 2) {
+        const double prev = vpot[ip].vr[nk - 2];
+        double cut = vr0[ip][nk - 1] + (it % 3 - 1) * 1e-4;
+        if (cut <= prev) cut = prev + 1e-8;
+        vpot[ip].vr[nk - 1] = cut;
+      }
+    }
+
+    // Cached assembly
+    use_assembly_cache = true;
+    assemble_equations();
+    MatrixXd eq_cached = eqmat;
+    VectorXd ref_cached = vref;
+    VectorXd w_cached = vweight;
+
+    // Legacy assembly
+    use_assembly_cache = false;
+    assemble_equations();
+    MatrixXd eq_legacy = eqmat;
+    VectorXd ref_legacy = vref;
+    VectorXd w_legacy = vweight;
+    use_assembly_cache = true;
+
+    double max_eq = 0.0, max_ref = 0.0, max_w = 0.0;
+    for (int r = 0; r < nrows; r++) {
+      max_ref = std::max(max_ref, std::abs(ref_cached[r] - ref_legacy[r]));
+      max_w   = std::max(max_w,   std::abs(w_cached[r] - w_legacy[r]));
+      for (int c = 0; c < ncols; c++) {
+        max_eq = std::max(max_eq, std::abs(eq_cached(r, c) - eq_legacy(r, c)));
+      }
+    }
+
+    // Exact floating-point match expected: same pow() order and arithmetic.
+    const double tol = 0.0;
+    if (max_eq > tol || max_ref > tol || max_w > tol) {
+      cerr << "verify_assembly FAIL trial=" << it
+           << " max|eqmat|=" << max_eq
+           << " max|vref|=" << max_ref
+           << " max|vweight|=" << max_w << endl;
+      restore();
+      return false;
+    }
+    cout << "verify_assembly OK trial=" << it
+         << " max|eqmat|=" << max_eq
+         << " max|vref|=" << max_ref
+         << " max|vweight|=" << max_w << endl;
+  }
+
+  restore();
+  return true;
+}
+
+void Allequations::time_assembly(int nrep) {
+  if (!assembly_cache_ready) {
+    cerr << "time_assembly: cache not built" << endl;
+    return;
+  }
+  if (nrep < 1) nrep = 1;
+
+  Timer t;
+  use_assembly_cache = true;
+  t.reset();
+  for (int i = 0; i < nrep; i++) assemble_equations();
+  const double t_cached = t.elapsed();
+
+  use_assembly_cache = false;
+  t.reset();
+  for (int i = 0; i < nrep; i++) assemble_equations();
+  const double t_legacy = t.elapsed();
+  use_assembly_cache = true;
+
+  cout << fixed << setprecision(6);
+  cout << "#time_assembly nrep=" << nrep
+       << " cached_total=" << t_cached
+       << " legacy_total=" << t_legacy
+       << " cached_per=" << (t_cached / nrep)
+       << " legacy_per=" << (t_legacy / nrep)
+       << " speedup=" << (t_legacy / t_cached)
+       << endl;
+}
+
 
 
