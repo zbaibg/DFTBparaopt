@@ -1,8 +1,8 @@
-CXX=icpc
-CXXFLAGS= -std=c++11 -O3 -DEIGEN_USE_MKL_ALL # -openmp #-g  
+CXX=g++
+CXXFLAGS= -std=c++11 -O3  
 INCLUDES= -I../eigen3.37
 LDFLAGS=
-LIBS= -mkl
+LIBS=
 
 all: ord2abSpl
 

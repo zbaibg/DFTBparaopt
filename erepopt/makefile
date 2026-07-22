@@ -1,8 +1,8 @@
 MPICXX=mpicxx
-MPICXXFLAGS= -cxx=icpc -std=c++11 -O3 -fpermissive -fPIC #-Wall 
+MPICXXFLAGS= -std=c++11 -O3 #-fpermissive #-Wall 
 INCLUDES= -I../eigen3.37 -I../galib247/include
 LDFLAGS= -L../galib247/lib
-LIBS= -lga #-mkl
+LIBS= -lga 
 
 all: erepopt
 
