@@ -1,0 +1,4 @@
+test_genes
+*.o
+*.out
+*.log

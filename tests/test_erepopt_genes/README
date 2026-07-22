@@ -1,0 +1,14 @@
+# test_erepopt_genes
+
+Unit tests for the erepopt genome / SKF naming helpers in `erepopt/genes.*`:
+
+- sparse chromosome length (`min==max` excluded)
+- `apply_genome_to_params` does not overwrite locked parameters
+- `pair_onsite_suffix` only includes hub/vor for the pair's two elements
+- free-gene `pop.*.dat` token count matches `genome_length`
+
+Uses only in-memory fake elements (C/H/O). No DFTB, skgen, or project datasets.
+
+```bash
+./run.sh
+```
