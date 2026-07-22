@@ -21,6 +21,7 @@ extern int cpu_number;
 extern int power;
 extern sddh ddh;
 extern string popfinalfile, popinitialfile;
+extern string popgensfile, scorefile;
 extern string scratch;
 
 void remove_comment(char *cstr);
@@ -80,6 +81,8 @@ void Erepobj::readinp(const string inputfile){
           if(stemp.find("outfile ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); outfilename=ctemp2;}
           if(stemp.find("popfinalfile ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2);  popfinalfile=ctemp2;}
           if(stemp.find("popinitialfile ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); popinitialfile=ctemp2;}
+          if(stemp.find("popgensfile ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); popgensfile=ctemp2;}
+          if(stemp.find("scorefile ")!=string::npos){ sscanf(cline,"%s %s",ctemp1,ctemp2); scorefile=ctemp2;}
         }
       }else if(stemp.find("$variables:")!=string::npos){
         while(infile.getline(cline,512)){

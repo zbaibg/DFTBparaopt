@@ -26,6 +26,10 @@ void clamp_free_genome(GAGenome& g, Erepobj& erep, sddh& ddh);
 void write_free_genes(std::ostream& out, const GAGenome& g,
                       const Erepobj& erep, const sddh& ddh);
 
+// Write one individual: free genes + score (scientific, 12 digits).
+void write_individual_line(std::ostream& out, const GAGenome& g,
+                           const Erepobj& erep, const sddh& ddh);
+
 // Copy free genes from genome into velem[].radius[].r and ddh.*.value.
 // Fixed parameters are left unchanged (as loaded from input).
 void apply_genome_to_params(const GAGenome& g, Erepobj& erep, sddh& ddh);

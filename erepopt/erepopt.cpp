@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <sstream> 
+#include <iomanip>
 #include <omp.h> 
 #include "erepobj.hpp"
 #include <fstream>
@@ -32,6 +33,8 @@ int   MyUniformCrossover(const GAGenome&, const GAGenome&, GAGenome*, GAGenome*)
 vector<string> addHamiltonian;
 string popfinalfile="pop.final.dat";
 string popinitialfile="pop.initial.dat";
+string popgensfile="pop.gens.dat";
+string scorefile="score.dat";
 string scratch="/tmp";
 int cpu_number=1;
 int power=2;
@@ -51,6 +54,23 @@ double s1=1.17,s2=1.40,s3=1.20,s4=2.0,s5=2.0,s6=2.0,s7=2.0,s8=2.0,s9=2.0,sdenswf
 fstream infile,outfile,restartfile;
 sddh ddh;
 Erepobj erepobj;
+
+// Dump current population (genes + scores) and append best score for this generation.
+static void write_generation_snapshot(ostream& popout, ostream& scoreout,
+                                      MyGASimpleGA& ga, GA1DArrayGenome<double>& genome,
+                                      int generation) {
+  popout << "# generation " << generation << "\n";
+  for (int i = 0; i < ga.population().size(); i++) {
+    genome = ga.population().individual(i);
+    write_individual_line(popout, genome, erepobj, ddh);
+  }
+  popout.flush();
+  scoreout << generation << "\t";
+  scoreout << std::scientific << std::setprecision(12);
+  scoreout << ga.population().best().score() << "\n";
+  scoreout << std::fixed;
+  scoreout.flush();
+}
 int main(int argc, char** argv){
   int i,j,k,idx,length,rank;
   MPI_Init(NULL,NULL);
@@ -95,9 +115,9 @@ int main(int argc, char** argv){
     ga.nGenerations(ga_ngen);
     ga.pMutation(ga_pmut);
     ga.pCrossover(ga_pcross);
-    ga.scoreFilename("score.dat");  // name of file for scores
-    ga.scoreFrequency(ga_scoref); // keep the scores of every 10th generation
-    ga.flushFrequency(ga_flushf); // specify how often to write the score to disk
+    // Disable GAlib's native score dump (default stream precision makes it useless,
+    // e.g. everything prints as 1e-06). We write score.dat ourselves below.
+    ga.flushFrequency(0);
     ga.selectScores(GAStatistics::Minimum);
   //ga.parameters(argc, argv, gaTrue); // parse commands, complain if bogus args
     
@@ -114,15 +134,18 @@ int main(int argc, char** argv){
     initialgen=false;
     ga.initialstep();
    if(rank==0){
-    outfile.open(popinitialfile.c_str(), (STD_IOS_OUT | STD_IOS_TRUNC));
+    ofstream popinit(popinitialfile.c_str(), (STD_IOS_OUT | STD_IOS_TRUNC));
+    ofstream popgens(popgensfile.c_str(), (STD_IOS_OUT | STD_IOS_TRUNC));
+    ofstream scores(scorefile.c_str(), (STD_IOS_OUT | STD_IOS_TRUNC));
+    scores << "# generation\tbest_score\n";
     for(i=0; i<ga.population().size(); i++){
       genome = ga.population().individual(i);
-      write_free_genes(outfile, genome, erepobj, ddh);
-      outfile.precision(9);
-      outfile.width(20);
-      outfile << genome.score() << "\n";
+      write_individual_line(popinit, genome, erepobj, ddh);
     }
-    outfile.close();
+    popinit.close();
+    write_generation_snapshot(popgens, scores, ga, genome, ga.generation());
+    popgens.close();
+    scores.close();
 
     erepobj.fout << "#evolving...\n"; erepobj.fout.flush();
   }
@@ -134,20 +157,25 @@ int main(int argc, char** argv){
      }
       ga.step();
      if(rank==0){
-      ga.flushScores();
-      erepobj.fout.precision(9);
-//    erepobj.fout<<ga.population().individual(0).score()<<endl; cout.flush();
-      erepobj.fout<<ga.population().best().score()<<endl; cout.flush();
+      erepobj.fout.precision(12);
+      erepobj.fout<<std::scientific;
+      erepobj.fout<<ga.population().best().score()<<endl;
+      erepobj.fout<<std::fixed;
+      erepobj.fout.flush();
  
       outfile.open(popfinalfile.c_str(), (STD_IOS_OUT | STD_IOS_TRUNC));
       for(i=0; i<ga.population().size(); i++){
         genome = ga.population().individual(i);
-        write_free_genes(outfile, genome, erepobj, ddh);
-        outfile.precision(9);
-        outfile.width(20);
-        outfile << genome.score() << "\n";
+        write_individual_line(outfile, genome, erepobj, ddh);
       }
       outfile.close();
+
+      ofstream popgens(popgensfile.c_str(), (STD_IOS_OUT | STD_IOS_APP));
+      ofstream scores(scorefile.c_str(), (STD_IOS_OUT | STD_IOS_APP));
+      write_generation_snapshot(popgens, scores, ga, genome, ga.generation());
+      popgens.close();
+      scores.close();
+
       if(skfclean){
         string call="rm -f "+erepobj.libdir+"/*";
         i=system(call.c_str());	
@@ -155,7 +183,6 @@ int main(int argc, char** argv){
      }
     }
    if(rank==0){
-    ga.flushScores();
     erepobj.fout<<"#ga end!\n";
     genome = ga.population().best();
     endgen=true;

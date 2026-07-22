@@ -1,4 +1,6 @@
+#include <iomanip>
 #include "genes.hpp"
+
 #include <sstream>
 
 using namespace std;
@@ -192,6 +194,16 @@ void write_free_genes(ostream& out, const GAGenome& g,
       }
     }
   }
+}
+
+void write_individual_line(ostream& out, const GAGenome& g,
+                           const Erepobj& erep, const sddh& ddh) {
+  write_free_genes(out, g, erep, ddh);
+  out << std::scientific;
+  out.precision(12);
+  out.width(20);
+  out << g.score() << "\n";
+  out << std::fixed;
 }
 
 void apply_genome_to_params(const GAGenome& g, Erepobj& erep, sddh& ddh) {
